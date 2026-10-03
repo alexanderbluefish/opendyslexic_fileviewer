@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-title" content="DyslexicReader" />
   <title>Dyslexia Reader</title>
 
-  <!-- PDF.js CDN -->
+  <!-- PDF.js Engine -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
@@ -44,8 +44,8 @@
       --text-color: #111111;
       --font-size: 22px;
       --line-height: 1.8;
-      --letter-spacing: 0.08em;
-      --word-spacing: 0.16em;
+      --letter-spacing: 0.06em;
+      --word-spacing: 0.14em;
     }
 
     * {
@@ -140,31 +140,31 @@
     }
 
     .page-header {
-      font-size: 0.85em;
+      font-size: 0.8em;
       opacity: 0.55;
       margin-bottom: 24px;
       text-transform: uppercase;
       letter-spacing: 0.12em;
     }
 
-    /* Heading styling */
+    /* Headings */
     .heading {
       font-size: calc(var(--font-size) * 1.25);
-      line-height: calc(var(--line-height) * 0.9);
+      line-height: calc(var(--line-height) * 0.95);
       letter-spacing: var(--letter-spacing);
       word-spacing: var(--word-spacing);
-      margin-top: 1.6em;
+      margin-top: 1.8em;
       margin-bottom: 0.8em;
       font-weight: bold;
     }
 
-    /* Paragraph styling */
+    /* Paragraphs */
     .paragraph {
       font-size: var(--font-size);
       line-height: var(--line-height);
       letter-spacing: var(--letter-spacing);
       word-spacing: var(--word-spacing);
-      margin-bottom: 1.6em;
+      margin-bottom: 1.6em; /* Distinct blank line equivalent */
       text-align: left;
     }
 
@@ -234,8 +234,8 @@
 
   <main id="readerArea">
     <div class="empty-state">
-      <h2>OpenDyslexic Reader Ready</h2>
-      <p>Tap "Open File" above to load a document with preserved headings, bold/italics, and inline photos.</p>
+      <h2>v2.4 Ready</h2>
+      <p>Tap "Open File" to load your document.</p>
     </div>
   </main>
 
@@ -278,19 +278,50 @@
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    // Extract images with coordinate tracking
-    async function extractImagesWithPositions(page) {
+    // Resolve font styles directly from page font dictionary
+    async function resolveFontStyles(page, items) {
+      const fontMap = {};
+      const uniqueFontNames = [...new Set(items.map(it => it.fontName).filter(Boolean))];
+
+      await Promise.all(uniqueFontNames.map(fName => {
+        return new Promise(resolve => {
+          if (page.commonObjs.has(fName)) {
+            const fontObj = page.commonObjs.get(fName);
+            fontMap[fName] = parseFontObj(fontObj);
+            resolve();
+          } else {
+            page.commonObjs.get(fName, (fontObj) => {
+              fontMap[fName] = parseFontObj(fontObj);
+              resolve();
+            });
+          }
+        });
+      }));
+
+      return fontMap;
+    }
+
+    function parseFontObj(fontObj) {
+      if (!fontObj) return { isBold: false, isItalic: false };
+      const name = (fontObj.name || fontObj.fallbackName || '').toLowerCase();
+      const isBold = fontObj.bold || name.includes('bold') || name.includes('black') || name.includes('heavy') || name.includes('w7') || name.includes('w8');
+      const isItalic = fontObj.italic || name.includes('italic') || name.includes('oblique') || name.includes('slant');
+      return { isBold, isItalic };
+    }
+
+    // Extract images with normalized viewport coordinates
+    async function extractImagesWithPositions(page, viewport) {
       const ops = await page.getOperatorList();
       const imageItems = [];
       const visited = new Set();
-      let currentMatrix = [1, 0, 0, 1, 0, 0];
+      let ctm = [1, 0, 0, 1, 0, 0];
 
       for (let i = 0; i < ops.fnArray.length; i++) {
         const fn = ops.fnArray[i];
         const args = ops.argsArray[i];
 
         if (fn === pdfjsLib.OPS.transform) {
-          currentMatrix = args;
+          ctm = args;
         }
 
         if (fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageXObjectRepeat) {
@@ -298,7 +329,10 @@
           if (visited.has(objId)) continue;
           visited.add(objId);
 
-          const imgY = currentMatrix[5];
+          // Convert PDF transform to Viewport Y coordinate
+          const pt = pdfjsLib.Util.applyTransform([0, 0], ctm);
+          const vPt = viewport.convertToViewportPoint(pt[0], pt[1]);
+          const screenY = vPt[1]; // Viewport Y flows naturally top-to-bottom
 
           try {
             const imgData = await new Promise((resolve) => {
@@ -311,7 +345,7 @@
               }
             });
 
-            if (imgData && imgData.data && imgData.width > 30 && imgData.height > 30) {
+            if (imgData && imgData.data && imgData.width > 40 && imgData.height > 40) {
               const canvas = document.createElement('canvas');
               canvas.width = imgData.width;
               canvas.height = imgData.height;
@@ -322,14 +356,13 @@
                 fullImageData = new ImageData(new Uint8ClampedArray(imgData.data.buffer), imgData.width, imgData.height);
               } else {
                 fullImageData = ctx.createImageData(imgData.width, imgData.height);
-                let srcIdx = 0, destIdx = 0;
+                let s = 0, d = 0;
                 for (let p = 0; p < imgData.width * imgData.height; p++) {
-                  fullImageData.data[destIdx] = imgData.data[srcIdx];
-                  fullImageData.data[destIdx + 1] = imgData.data[srcIdx + 1];
-                  fullImageData.data[destIdx + 2] = imgData.data[srcIdx + 2];
-                  fullImageData.data[destIdx + 3] = 255;
-                  srcIdx += 3;
-                  destIdx += 4;
+                  fullImageData.data[d] = imgData.data[s];
+                  fullImageData.data[d + 1] = imgData.data[s + 1];
+                  fullImageData.data[d + 2] = imgData.data[s + 2];
+                  fullImageData.data[d + 3] = 255;
+                  s += 3; d += 4;
                 }
               }
               ctx.putImageData(fullImageData, 0, 0);
@@ -343,12 +376,12 @@
 
               imageItems.push({
                 type: 'image',
-                y: imgY,
+                y: screenY,
                 element: wrapper
               });
             }
           } catch (e) {
-            console.warn('Image parse skipped:', e);
+            console.warn('Image extraction skipped:', e);
           }
         }
       }
@@ -373,74 +406,105 @@
 
           for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.0 });
             const textData = await page.getTextContent();
-            const images = await extractImagesWithPositions(page);
 
-            // Group text chunks into visual lines while preserving font styles
-            const linesByY = [];
+            // 1. Resolve actual font objects from PDF resources
+            const fontMeta = await resolveFontStyles(page, textData.items);
+
+            // 2. Extract images with matched viewport Y
+            const images = await extractImagesWithPositions(page, viewport);
+
+            // 3. Convert all text items into screen coordinates (Y top-to-bottom)
+            const textItems = [];
             textData.items.forEach(item => {
               if (!item.str.trim()) return;
-
-              const y = Math.round(item.transform[5]);
+              const pt = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
               const fontSize = Math.round(Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]));
-              const fontName = (item.fontName || '').toLowerCase();
+              const meta = fontMeta[item.fontName] || { isBold: false, isItalic: false };
 
-              const isBold = fontName.includes('bold') || fontName.includes('black') || fontName.includes('heavy') || fontName.includes('bolder');
-              const isItalic = fontName.includes('italic') || fontName.includes('oblique') || fontName.includes('slant');
+              textItems.push({
+                str: item.str,
+                x: pt[0],
+                y: pt[1],
+                size: fontSize,
+                isBold: meta.isBold,
+                isItalic: meta.isItalic
+              });
+            });
 
-              let chunkHtml = escapeHtml(item.str);
-              if (isBold && isItalic) {
-                chunkHtml = `<strong><em>${chunkHtml}</em></strong>`;
-              } else if (isBold) {
-                chunkHtml = `<strong>${chunkHtml}</strong>`;
-              } else if (isItalic) {
-                chunkHtml = `<em>${chunkHtml}</em>`;
+            // Group into visual lines (tolerance +/- 3px)
+            const lines = [];
+            textItems.forEach(it => {
+              let line = lines.find(l => Math.abs(l.y - it.y) <= 3);
+              if (!line) {
+                line = { y: it.y, items: [] };
+                lines.push(line);
               }
-
-              const existingLine = linesByY.find(l => Math.abs(l.y - y) <= 4);
-              if (existingLine) {
-                existingLine.rawText += (existingLine.rawText.endsWith(' ') ? '' : ' ') + item.str;
-                existingLine.html += (existingLine.html.endsWith(' ') ? '' : ' ') + chunkHtml;
-                existingLine.fontSizes.push(fontSize);
-                if (isBold) existingLine.boldChunks++;
-                existingLine.totalChunks++;
-              } else {
-                linesByY.push({
-                  y: y,
-                  rawText: item.str,
-                  html: chunkHtml,
-                  fontSizes: [fontSize],
-                  boldChunks: isBold ? 1 : 0,
-                  totalChunks: 1
-                });
-              }
+              line.items.push(it);
             });
 
             // Sort lines top-to-bottom
-            linesByY.sort((a, b) => b.y - a.y);
+            lines.sort((a, b) => a.y - b.y);
 
-            // Calculate median body font size & typical line gap
-            const allSizes = [];
-            linesByY.forEach(l => l.fontSizes.forEach(s => allSizes.push(s)));
-            allSizes.sort((a, b) => a - b);
-            const medianFontSize = allSizes.length ? allSizes[Math.floor(allSizes.length / 2)] : 12;
+            // Assemble each line left-to-right with HTML styling
+            const assembledLines = lines.map(line => {
+              line.items.sort((a, b) => a.x - b.x);
 
-            const lineGaps = [];
-            for (let i = 1; i < linesByY.length; i++) {
-              lineGaps.push(linesByY[i - 1].y - linesByY[i].y);
+              let raw = '';
+              let html = '';
+              let maxFontSize = 0;
+              let boldCount = 0;
+
+              line.items.forEach((token, idx) => {
+                let tokenHtml = escapeHtml(token.str);
+                if (token.isBold && token.isItalic) {
+                  tokenHtml = `<strong><em>${tokenHtml}</em></strong>`;
+                } else if (token.isBold) {
+                  tokenHtml = `<strong>${tokenHtml}</strong>`;
+                } else if (token.isItalic) {
+                  tokenHtml = `<em>${tokenHtml}</em>`;
+                }
+
+                const needsSpace = idx > 0 && (token.x - (line.items[idx - 1].x + line.items[idx - 1].size * 0.5) > 2);
+                const separator = (needsSpace && !raw.endsWith(' ')) ? ' ' : '';
+
+                raw += separator + token.str;
+                html += separator + tokenHtml;
+                if (token.size > maxFontSize) maxFontSize = token.size;
+                if (token.isBold) boldCount++;
+              });
+
+              return {
+                y: line.y,
+                raw: raw.trim(),
+                html: html.trim(),
+                maxFontSize: maxFontSize,
+                isMostlyBold: boldCount >= (line.items.length * 0.5)
+              };
+            });
+
+            // Calculate median font size and median line spacing
+            const allSizes = assembledLines.map(l => l.maxFontSize).filter(s => s > 0).sort((a, b) => a - b);
+            const medianSize = allSizes.length ? allSizes[Math.floor(allSizes.length / 2)] : 12;
+
+            const spacings = [];
+            for (let i = 1; i < assembledLines.length; i++) {
+              const diff = assembledLines[i].y - assembledLines[i - 1].y;
+              if (diff > 4 && diff < 50) spacings.push(diff);
             }
-            lineGaps.sort((a, b) => a - b);
-            const typicalGap = lineGaps.length ? lineGaps[Math.floor(lineGaps.length / 2)] : 14;
+            spacings.sort((a, b) => a - b);
+            const medianSpacing = spacings.length ? spacings[Math.floor(spacings.length / 2)] : 14;
 
-            // Classify headings vs paragraphs and assemble blocks
-            const contentItems = [];
+            // Group into Headings and Paragraphs
+            const contentBlocks = [];
             let currentParaHtml = '';
             let currentParaRaw = '';
-            let currentParaY = linesByY.length ? linesByY[0].y : 0;
+            let currentParaY = assembledLines.length ? assembledLines[0].y : 0;
 
-            function flushParagraph() {
+            function commitPara() {
               if (currentParaHtml.trim()) {
-                contentItems.push({
+                contentBlocks.push({
                   type: 'paragraph',
                   y: currentParaY,
                   html: currentParaHtml
@@ -450,63 +514,57 @@
               }
             }
 
-            for (let i = 0; i < linesByY.length; i++) {
-              const current = linesByY[i];
-              const maxLineSize = Math.max(...current.fontSizes);
-              const isMostlyBold = (current.boldChunks / current.totalChunks) >= 0.7;
-              const isHeadingSize = maxLineSize >= medianFontSize * 1.18;
-              const isShort = current.rawText.trim().length < 80;
+            for (let i = 0; i < assembledLines.length; i++) {
+              const curr = assembledLines[i];
+              const prev = assembledLines[i - 1];
 
-              // True heading detection
-              const isHeading = (isHeadingSize || (isMostlyBold && isShort)) && !/[.;]$/.test(current.rawText.trim());
+              const isHeadingSize = curr.maxFontSize >= (medianSize * 1.18);
+              const isShort = curr.raw.length < 80;
+              const isHeading = (isHeadingSize || (curr.isMostlyBold && isShort)) && !/[.;]$/.test(curr.raw);
 
               if (isHeading) {
-                flushParagraph();
-                contentItems.push({
+                commitPara();
+                contentBlocks.push({
                   type: 'heading',
-                  y: current.y,
-                  html: current.html
+                  y: curr.y,
+                  html: curr.html
                 });
                 continue;
               }
 
-              // Body text logic
               if (!currentParaHtml) {
-                currentParaHtml = current.html;
-                currentParaRaw = current.rawText;
-                currentParaY = current.y;
+                currentParaHtml = curr.html;
+                currentParaRaw = curr.raw;
+                currentParaY = curr.y;
                 continue;
               }
 
-              const prevLine = linesByY[i - 1];
-              const gap = prevLine ? (prevLine.y - current.y) : typicalGap;
-              const isParagraphGap = gap > (typicalGap * 1.35);
-              const endsWithPunctuation = /[.!?:"']$/.test(currentParaRaw.trim());
+              const lineGap = curr.y - prev.y;
+              const isDistinctParagraphGap = lineGap > (medianSpacing * 1.38);
+              const prevEndsSentence = /[.!?:"']$/.test(currentParaRaw.trim());
 
-              if (isParagraphGap && endsWithPunctuation) {
-                flushParagraph();
-                currentParaHtml = current.html;
-                currentParaRaw = current.rawText;
-                currentParaY = current.y;
+              if (isDistinctParagraphGap || (prevEndsSentence && lineGap > medianSpacing * 1.15)) {
+                commitPara();
+                currentParaHtml = curr.html;
+                currentParaRaw = curr.raw;
+                currentParaY = curr.y;
               } else {
-                // Remove mid-sentence line wraps
-                const hyphenated = currentParaRaw.endsWith('-');
-                if (hyphenated) {
-                  currentParaHtml = currentParaHtml.slice(0, -1) + current.html;
-                  currentParaRaw = currentParaRaw.slice(0, -1) + current.rawText;
+                // Unwrap mid-sentence line break
+                if (currentParaRaw.endsWith('-')) {
+                  currentParaHtml = currentParaHtml.slice(0, -1) + curr.html;
+                  currentParaRaw = currentParaRaw.slice(0, -1) + curr.raw;
                 } else {
-                  currentParaHtml += ' ' + current.html;
-                  currentParaRaw += ' ' + current.rawText;
+                  currentParaHtml += ' ' + curr.html;
+                  currentParaRaw += ' ' + curr.raw;
                 }
               }
             }
-            flushParagraph();
+            commitPara();
 
-            // Interleave text and images according to vertical page order
-            const allElements = [...contentItems, ...images];
-            allElements.sort((a, b) => b.y - a.y);
+            // Interleave text blocks and images by visual top-to-bottom order (Y ascending)
+            const allElements = [...contentBlocks, ...images];
+            allElements.sort((a, b) => a.y - b.y);
 
-            // Render page container
             const block = document.createElement('section');
             block.className = 'page-block';
 
@@ -537,7 +595,7 @@
           readerArea.innerHTML = `<div class="empty-state"><h3>Error loading PDF: ${err.message}</h3></div>`;
         }
       } else {
-        // Plain text / Markdown fallback
+        // Plain text / Markdown
         const reader = new FileReader();
         reader.onload = (evt) => {
           readerArea.innerHTML = '';
