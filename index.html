@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="DyslexicReader" />
+  <title>Dyslexia Reader</title>
+
+  <!-- OpenDyslexic Font CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/open-dyslexic.css" />
+
+  <!-- PDF.js for rendering incoming PDF text -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #fbf0d9;
+      --text-color: #111111;
+      --font-size: 22px;
+      --line-height: 1.8;
+      --letter-spacing: 0.12em;
+      --word-spacing: 0.16em;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: 'OpenDyslexic', 'OpenDyslexic3', sans-serif;
+      font-size: var(--font-size);
+      line-height: var(--line-height);
+      letter-spacing: var(--letter-spacing);
+      word-spacing: var(--word-spacing);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.2s ease, color 0.2s ease;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+      padding: 12px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      z-index: 100;
+      color: #111;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    input[type="range"] {
+      cursor: pointer;
+    }
+
+    .color-presets {
+      display: flex;
+      gap: 6px;
+    }
+
+    .preset-btn {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+    }
+
+    .preset-btn:focus {
+      outline: 2px solid #000;
+    }
+
+    .custom-file-upload {
+      background: #0071e3;
+      color: #ffffff;
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    main {
+      flex: 1;
+      max-width: 850px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+
+    #content {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding-top: 60px;
+      color: rgba(0, 0, 0, 0.55);
+    }
+
+    .empty-state h2 {
+      margin-bottom: 8px;
+      font-size: 1.4rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="toolbar-group">
+      <label class="custom-file-upload">
+        Open File (.pdf, .txt, .md)
+        <input type="file" id="fileInput" accept=".txt,.md,.pdf,text/plain,application/pdf" />
+      </label>
+    </div>
+
+    <div class="toolbar-group">
+      <label for="fontSize">Size:</label>
+      <input type="range" id="fontSize" min="16" max="44" value="22" />
+      <span id="fontSizeDisplay">22px</span>
+    </div>
+
+    <div class="toolbar-group">
+      <label for="lineHeight">Spacing:</label>
+      <input type="range" id="lineHeight" min="1.4" max="2.6" step="0.1" value="1.8" />
+    </div>
+
+    <div class="toolbar-group">
+      <label>Theme:</label>
+      <div class="color-presets">
+        <button class="preset-btn" style="background: #fbf0d9;" title="Peach Cream" data-bg="#fbf0d9" data-text="#111111"></button>
+        <button class="preset-btn" style="background: #e3eedd;" title="Soft Mint" data-bg="#e3eedd" data-text="#142616"></button>
+        <button class="preset-btn" style="background: #dcebf7;" title="Soft Blue" data-bg="#dcebf7" data-text="#102538"></button>
+        <button class="preset-btn" style="background: #eaeaea;" title="Muted Gray" data-bg="#eaeaea" data-text="#1c1c1c"></button>
+        <button class="preset-btn" style="background: #1e1e1e;" title="Night Comfort" data-bg="#1e1e1e" data-text="#d8c593"></button>
+      </div>
+      <input type="color" id="customBg" value="#fbf0d9" title="Custom Background" />
+    </div>
+  </header>
+
+  <main>
+    <div id="content">
+      <div class="empty-state">
+        <h2>No file loaded</h2>
+        <p>Tap "Open File" to choose a PDF or document from your iPad Files or iCloud Drive.</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const contentDiv = document.getElementById('content');
+    const fileInput = document.getElementById('fileInput');
+    const fontSizeSlider = document.getElementById('fontSize');
+    const fontSizeDisplay = document.getElementById('fontSizeDisplay');
+    const lineHeightSlider = document.getElementById('lineHeight');
+    const customBg = document.getElementById('customBg');
+    const presetBtns = document.querySelectorAll('.preset-btn');
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    fontSizeSlider.addEventListener('input', (e) => {
+      const val = `${e.target.value}px`;
+      document.documentElement.style.setProperty('--font-size', val);
+      fontSizeDisplay.textContent = val;
+    });
+
+    lineHeightSlider.addEventListener('input', (e) => {
+      document.documentElement.style.setProperty('--line-height', e.target.value);
+    });
+
+    customBg.addEventListener('input', (e) => {
+      document.documentElement.style.setProperty('--bg-color', e.target.value);
+    });
+
+    presetBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const bg = btn.getAttribute('data-bg');
+        const text = btn.getAttribute('data-text');
+        document.documentElement.style.setProperty('--bg-color', bg);
+        document.documentElement.style.setProperty('--text-color', text);
+        customBg.value = bg;
+      });
+    });
+
+    async function processFile(file) {
+      if (!file) return;
+
+      contentDiv.textContent = 'Extracting and rendering text...';
+
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          let fullText = '';
+
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageStrings = textContent.items.map(item => item.str);
+            fullText += `--- Page ${i} ---\n\n` + pageStrings.join(' ') + '\n\n';
+          }
+
+          contentDiv.textContent = fullText || 'No readable text layer found in this PDF.';
+        } catch (err) {
+          contentDiv.textContent = 'Error reading PDF: ' + err.message;
+        }
+      } else {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          contentDiv.textContent = e.target.result;
+        };
+        reader.onerror = () => {
+          contentDiv.textContent = 'Error reading file.';
+        };
+        reader.readAsText(file);
+      }
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        processFile(e.target.files[0]);
+      }
+    });
+  </script>
+</body>
+</html>
