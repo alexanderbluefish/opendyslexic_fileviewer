@@ -8,20 +8,33 @@
   <meta name="apple-mobile-web-app-title" content="DyslexicReader" />
   <title>Dyslexia Reader</title>
 
-  <!-- OpenDyslexic Font CDN -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/open-dyslexic.css" />
-
-  <!-- PDF.js for rendering incoming PDF text -->
+  <!-- PDF.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
+    @font-face {
+      font-family: 'OpenDyslexic';
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Regular.woff') format('woff'),
+           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Regular.otf') format('opentype');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'OpenDyslexic';
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Bold.woff') format('woff'),
+           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Bold.otf') format('opentype');
+      font-weight: bold;
+      font-style: normal;
+      font-display: swap;
+    }
+
     :root {
       --bg-color: #fbf0d9;
       --text-color: #111111;
-      --font-size: 22px;
-      --line-height: 1.8;
-      --letter-spacing: 0.12em;
-      --word-spacing: 0.16em;
+      --font-scale: 1.0;
+      --letter-spacing: 0.05em;
     }
 
     * {
@@ -33,14 +46,10 @@
     body {
       background-color: var(--bg-color);
       color: var(--text-color);
-      font-family: 'OpenDyslexic', 'OpenDyslexic3', sans-serif;
-      font-size: var(--font-size);
-      line-height: var(--line-height);
-      letter-spacing: var(--letter-spacing);
-      word-spacing: var(--word-spacing);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      font-family: 'OpenDyslexic', sans-serif;
       transition: background-color 0.2s ease, color 0.2s ease;
       -webkit-text-size-adjust: 100%;
     }
@@ -52,16 +61,16 @@
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       border-bottom: 1px solid rgba(0, 0, 0, 0.15);
-      padding: 12px 18px;
+      padding: 10px 16px;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      z-index: 100;
+      gap: 10px;
+      z-index: 1000;
       color: #111;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-size: 14px;
+      font-size: 13px;
     }
 
     .toolbar-group {
@@ -72,7 +81,6 @@
 
     label {
       font-weight: 600;
-      font-size: 13px;
     }
 
     input[type="range"] {
@@ -85,15 +93,11 @@
     }
 
     .preset-btn {
-      width: 26px;
-      height: 26px;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
-      border: 1px solid rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(0, 0, 0, 0.3);
       cursor: pointer;
-    }
-
-    .preset-btn:focus {
-      outline: 2px solid #000;
     }
 
     .custom-file-upload {
@@ -112,26 +116,83 @@
 
     main {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 12px;
+      gap: 24px;
+      width: 100%;
+    }
+
+    /* Container for each PDF page */
+    .page-container {
+      position: relative;
+      background: #ffffff;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    /* Canvas renders original document graphics and images */
+    .pdf-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Tint overlay keeps images visible while applying background contrast tint */
+    .page-tint-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background-color: var(--bg-color);
+      mix-blend-mode: multiply;
+      opacity: 0.82;
+    }
+
+    /* Text layer replaces original text with OpenDyslexic */
+    .textLayer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      line-height: 1.0;
+    }
+
+    .textLayer span {
+      position: absolute;
+      color: var(--text-color) !important;
+      font-family: 'OpenDyslexic', sans-serif !important;
+      letter-spacing: var(--letter-spacing);
+      white-space: pre;
+      cursor: text;
+      transform-origin: 0% 0%;
+      background: var(--bg-color); /* Shields original underlying raster text */
+      padding: 1px 2px;
+      border-radius: 2px;
+    }
+
+    /* Plain text fallback viewer */
+    #plainTextWrapper {
       max-width: 850px;
       width: 100%;
-      margin: 0 auto;
-      padding: 32px 20px;
-    }
-
-    #content {
       white-space: pre-wrap;
       word-break: break-word;
+      font-size: calc(20px * var(--font-scale));
+      line-height: 1.8;
+      padding: 20px;
     }
 
-    .empty-state {
+    .status-msg {
       text-align: center;
-      padding-top: 60px;
-      color: rgba(0, 0, 0, 0.55);
-    }
-
-    .empty-state h2 {
-      margin-bottom: 8px;
-      font-size: 1.4rem;
+      padding: 40px;
+      color: rgba(0, 0, 0, 0.6);
+      font-size: 1.1rem;
     }
   </style>
 </head>
@@ -146,57 +207,47 @@
     </div>
 
     <div class="toolbar-group">
-      <label for="fontSize">Size:</label>
-      <input type="range" id="fontSize" min="16" max="44" value="22" />
-      <span id="fontSizeDisplay">22px</span>
+      <label for="fontScale">Size:</label>
+      <input type="range" id="fontScale" min="0.8" max="1.8" step="0.05" value="1.0" />
+      <span id="scaleDisplay">100%</span>
     </div>
 
     <div class="toolbar-group">
-      <label for="lineHeight">Spacing:</label>
-      <input type="range" id="lineHeight" min="1.4" max="2.6" step="0.1" value="1.8" />
-    </div>
-
-    <div class="toolbar-group">
-      <label>Theme:</label>
+      <label>Background Tint:</label>
       <div class="color-presets">
         <button class="preset-btn" style="background: #fbf0d9;" title="Peach Cream" data-bg="#fbf0d9" data-text="#111111"></button>
         <button class="preset-btn" style="background: #e3eedd;" title="Soft Mint" data-bg="#e3eedd" data-text="#142616"></button>
         <button class="preset-btn" style="background: #dcebf7;" title="Soft Blue" data-bg="#dcebf7" data-text="#102538"></button>
-        <button class="preset-btn" style="background: #eaeaea;" title="Muted Gray" data-bg="#eaeaea" data-text="#1c1c1c"></button>
-        <button class="preset-btn" style="background: #1e1e1e;" title="Night Comfort" data-bg="#1e1e1e" data-text="#d8c593"></button>
+        <button class="preset-btn" style="background: #ffffff;" title="Clean White" data-bg="#ffffff" data-text="#111111"></button>
+        <button class="preset-btn" style="background: #e5e5e5;" title="Muted Gray" data-bg="#e5e5e5" data-text="#1c1c1c"></button>
       </div>
-      <input type="color" id="customBg" value="#fbf0d9" title="Custom Background" />
+      <input type="color" id="customBg" value="#fbf0d9" title="Custom Tint" />
     </div>
   </header>
 
-  <main>
-    <div id="content">
-      <div class="empty-state">
-        <h2>No file loaded</h2>
-        <p>Tap "Open File" to choose a PDF or document from your iPad Files or iCloud Drive.</p>
-      </div>
-    </div>
+  <main id="viewerContainer">
+    <div class="status-msg">Tap "Open File" to load a PDF with photos or text document.</div>
   </main>
 
   <script>
-    const contentDiv = document.getElementById('content');
+    const viewer = document.getElementById('viewerContainer');
     const fileInput = document.getElementById('fileInput');
-    const fontSizeSlider = document.getElementById('fontSize');
-    const fontSizeDisplay = document.getElementById('fontSizeDisplay');
-    const lineHeightSlider = document.getElementById('lineHeight');
+    const fontScaleSlider = document.getElementById('fontScale');
+    const scaleDisplay = document.getElementById('scaleDisplay');
     const customBg = document.getElementById('customBg');
     const presetBtns = document.querySelectorAll('.preset-btn');
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    fontSizeSlider.addEventListener('input', (e) => {
-      const val = `${e.target.value}px`;
-      document.documentElement.style.setProperty('--font-size', val);
-      fontSizeDisplay.textContent = val;
-    });
+    let currentPdf = null;
+    let currentScaleMultiplier = 1.0;
 
-    lineHeightSlider.addEventListener('input', (e) => {
-      document.documentElement.style.setProperty('--line-height', e.target.value);
+    // Controls
+    fontScaleSlider.addEventListener('input', (e) => {
+      currentScaleMultiplier = parseFloat(e.target.value);
+      scaleDisplay.textContent = Math.round(currentScaleMultiplier * 100) + '%';
+      document.documentElement.style.setProperty('--font-scale', currentScaleMultiplier);
+      if (currentPdf) renderAllPages(currentPdf);
     });
 
     customBg.addEventListener('input', (e) => {
@@ -213,45 +264,103 @@
       });
     });
 
-    async function processFile(file) {
+    // File processing
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
       if (!file) return;
 
-      contentDiv.textContent = 'Extracting and rendering text...';
+      viewer.innerHTML = '<div class="status-msg">Loading and rendering document...</div>';
 
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         try {
-          const arrayBuffer = await file.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-          let fullText = '';
-
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageStrings = textContent.items.map(item => item.str);
-            fullText += `--- Page ${i} ---\n\n` + pageStrings.join(' ') + '\n\n';
-          }
-
-          contentDiv.textContent = fullText || 'No readable text layer found in this PDF.';
+          const buffer = await file.arrayBuffer();
+          currentPdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+          await renderAllPages(currentPdf);
         } catch (err) {
-          contentDiv.textContent = 'Error reading PDF: ' + err.message;
+          viewer.innerHTML = `<div class="status-msg">Error rendering PDF: ${err.message}</div>`;
         }
       } else {
+        // Plain text / Markdown
+        currentPdf = null;
         const reader = new FileReader();
-        reader.onload = (e) => {
-          contentDiv.textContent = e.target.result;
-        };
-        reader.onerror = () => {
-          contentDiv.textContent = 'Error reading file.';
+        reader.onload = (evt) => {
+          viewer.innerHTML = `<div id="plainTextWrapper">${escapeHtml(evt.target.result)}</div>`;
         };
         reader.readAsText(file);
       }
+    });
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    fileInput.addEventListener('change', (e) => {
-      if (e.target.files.length > 0) {
-        processFile(e.target.files[0]);
+    async function renderAllPages(pdf) {
+      viewer.innerHTML = '';
+      
+      // Calculate responsive target width for iPad display
+      const targetWidth = Math.min(window.innerWidth - 32, 850);
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const unscaledViewport = page.getViewport({ scale: 1.0 });
+        const scale = (targetWidth / unscaledViewport.width) * (window.devicePixelRatio || 1);
+        const viewport = page.getViewport({ scale: targetWidth / unscaledViewport.width });
+
+        // Container
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'page-container';
+        pageDiv.style.width = `${viewport.width}px`;
+        pageDiv.style.height = `${viewport.height}px`;
+
+        // 1. Base Canvas Layer: renders original images, shapes, and figures
+        const canvas = document.createElement('canvas');
+        canvas.className = 'pdf-canvas';
+        const ctx = canvas.getContext('2d');
+        canvas.width = Math.floor(viewport.width * (window.devicePixelRatio || 1));
+        canvas.height = Math.floor(viewport.height * (window.devicePixelRatio || 1));
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+
+        const renderContext = {
+          canvasContext: ctx,
+          viewport: page.getViewport({ scale: scale })
+        };
+        await page.render(renderContext).promise;
+        pageDiv.appendChild(canvas);
+
+        // 2. Background Tint Overlay
+        const tint = document.createElement('div');
+        tint.className = 'page-tint-overlay';
+        pageDiv.appendChild(tint);
+
+        // 3. Text Overlay: renders OpenDyslexic over original text locations
+        const textContent = await page.getTextContent();
+        const textLayer = document.createElement('div');
+        textLayer.className = 'textLayer';
+        textLayer.style.width = `${viewport.width}px`;
+        textLayer.style.height = `${viewport.height}px`;
+
+        textContent.items.forEach(item => {
+          if (!item.str.trim()) return;
+
+          const span = document.createElement('span');
+          span.textContent = item.str;
+
+          // Compute exact page coordinates from transformation matrix
+          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+          const fontSize = Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1]) * currentScaleMultiplier;
+          
+          span.style.left = `${tx[4]}px`;
+          span.style.top = `${tx[5] - fontSize}px`;
+          span.style.fontSize = `${fontSize}px`;
+
+          textLayer.appendChild(span);
+        });
+
+        pageDiv.appendChild(textLayer);
+        viewer.appendChild(pageDiv);
       }
-    });
+    }
   </script>
 </body>
 </html>
