@@ -8,14 +8,16 @@
   <meta name="apple-mobile-web-app-title" content="DyslexicReader" />
   <title>Dyslexia Reader</title>
 
-  <!-- PDF.js Engine -->
+  <!-- Mammoth.js for DOCX parsing (native bold, headings & inline images) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+  <!-- PDF.js for legacy PDF parsing -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
-    /* Direct raw font files from canonical repositories */
     @font-face {
       font-family: 'OpenDyslexic';
-      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-Regular.otf') format('opentype');
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Regular.woff') format('woff'),
+           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Regular.otf') format('opentype');
       font-weight: normal;
       font-style: normal;
       font-display: swap;
@@ -23,32 +25,18 @@
 
     @font-face {
       font-family: 'OpenDyslexic';
-      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-Bold.otf') format('opentype');
-      font-weight: 700;
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Bold.woff') format('woff'),
+           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Bold.otf') format('opentype');
+      font-weight: bold;
       font-style: normal;
       font-display: swap;
     }
 
     @font-face {
       font-family: 'OpenDyslexic';
-      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-Bold.otf') format('opentype');
-      font-weight: 900;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: 'OpenDyslexic';
-      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-Italic.otf') format('opentype');
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Italic.woff') format('woff'),
+           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Italic.otf') format('opentype');
       font-weight: normal;
-      font-style: italic;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: 'OpenDyslexic';
-      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-BoldItalic.otf') format('opentype');
-      font-weight: 700;
       font-style: italic;
       font-display: swap;
     }
@@ -56,7 +44,6 @@
     :root {
       --bg-color: #fbf0d9;
       --text-color: #111111;
-      --accent-color: #0071e3;
       --font-size: 22px;
       --line-height: 1.8;
       --letter-spacing: 0.06em;
@@ -146,66 +133,72 @@
       width: 100%;
       margin: 0 auto;
       padding: 30px 20px;
-    }
-
-    .page-block {
-      margin-bottom: 48px;
-      padding-bottom: 32px;
-      border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
-    }
-
-    .page-header {
-      font-size: 0.8em;
-      opacity: 0.55;
-      margin-bottom: 24px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-
-    .heading {
-      font-size: calc(var(--font-size) * 1.3);
-      line-height: calc(var(--line-height) * 0.95);
-      letter-spacing: var(--letter-spacing);
-      word-spacing: var(--word-spacing);
-      margin-top: 1.8em;
-      margin-bottom: 0.8em;
-      font-weight: 900;
-    }
-
-    .paragraph {
       font-size: var(--font-size);
       line-height: var(--line-height);
       letter-spacing: var(--letter-spacing);
       word-spacing: var(--word-spacing);
-      margin-bottom: 1.6em;
+    }
+
+    /* Clean typography & headings */
+    h1, h2, h3, h4, h5, h6 {
+      font-family: 'OpenDyslexic', sans-serif !important;
+      font-weight: bold;
+      margin-top: 1.8em;
+      margin-bottom: 0.8em;
+      line-height: 1.25;
+    }
+
+    h1 { font-size: calc(var(--font-size) * 1.45); border-bottom: 2px solid currentColor; padding-bottom: 6px; }
+    h2 { font-size: calc(var(--font-size) * 1.3); }
+    h3 { font-size: calc(var(--font-size) * 1.18); }
+
+    p {
+      margin-bottom: 1.6em; /* Distinct blank line spacing */
       text-align: left;
     }
 
-    /* High-contrast bold treatment */
-    strong, b, .is-bold {
+    /* Bold & Italic styling */
+    strong, b {
       font-family: 'OpenDyslexic', sans-serif !important;
-      font-weight: 900 !important;
-      text-shadow: 0.4px 0 0 currentColor, -0.2px 0 0 currentColor; /* Enhances visual weight on iPads */
-      display: inline;
+      font-weight: bold !important;
+      -webkit-text-stroke: 0.5px currentColor;
     }
 
-    em, i, .is-italic {
+    em, i {
       font-family: 'OpenDyslexic', sans-serif !important;
       font-style: italic !important;
-      display: inline;
     }
 
-    .image-wrapper {
-      margin: 28px 0;
-      text-align: center;
-    }
-
-    .extracted-img {
+    /* Preserved inline images */
+    img {
       max-width: 100%;
       height: auto;
       border-radius: 8px;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+      margin: 24px auto;
+      display: block;
       background: #fff;
+    }
+
+    /* Preserved tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+    }
+
+    th, td {
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      padding: 10px;
+      text-align: left;
+    }
+
+    ul, ol {
+      margin: 0 0 1.6em 1.5em;
+    }
+
+    li {
+      margin-bottom: 0.5em;
     }
 
     .empty-state {
@@ -220,8 +213,8 @@
   <header>
     <div class="toolbar-group">
       <label class="custom-file-upload">
-        Open File (.pdf, .txt, .md)
-        <input type="file" id="fileInput" accept=".txt,.md,.pdf,text/plain,application/pdf" />
+        Open File (.docx, .pdf, .txt)
+        <input type="file" id="fileInput" accept=".docx,.pdf,.txt,.md,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" />
       </label>
     </div>
 
@@ -251,8 +244,8 @@
 
   <main id="readerArea">
     <div class="empty-state">
-      <h2>v2.6 Bold Engine Active</h2>
-      <p>Tap "Open File" to load your document.</p>
+      <h2>DOCX Native Engine Active</h2>
+      <p>Tap "Open File" above to load a .docx or document.</p>
     </div>
   </main>
 
@@ -291,327 +284,50 @@
       });
     });
 
-    function escapeHtml(str) {
-      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
-
-    // Inspect real font family from textContent.styles dictionary
-    function getFontTraits(item, stylesDict) {
-      let isBold = false;
-      let isItalic = false;
-
-      const styleObj = stylesDict ? stylesDict[item.fontName] : null;
-      const combined = [
-        item.fontName || '',
-        styleObj ? (styleObj.fontFamily || '') : ''
-      ].join(' ').toLowerCase();
-
-      // Detection matching PostScript names, standard font names, and weights
-      if (
-        combined.includes('bold') ||
-        combined.includes('black') ||
-        combined.includes('heavy') ||
-        combined.includes('bolder') ||
-        combined.includes('w7') ||
-        combined.includes('w8') ||
-        combined.includes('w9') ||
-        combined.includes('semibold') ||
-        combined.includes('medium')
-      ) {
-        isBold = true;
-      }
-
-      if (
-        combined.includes('italic') ||
-        combined.includes('oblique') ||
-        combined.includes('slant')
-      ) {
-        isItalic = true;
-      }
-
-      return { isBold, isItalic };
-    }
-
-    // Safe image extractor
-    async function extractImagesSafely(page, viewport) {
-      const imageItems = [];
-      try {
-        const ops = await page.getOperatorList();
-        const visited = new Set();
-        let ctm = [1, 0, 0, 1, 0, 0];
-
-        for (let i = 0; i < ops.fnArray.length; i++) {
-          const fn = ops.fnArray[i];
-          const args = ops.argsArray[i];
-
-          if (fn === pdfjsLib.OPS.transform) {
-            ctm = args;
-          }
-
-          if (fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageXObjectRepeat) {
-            const objId = args[0];
-            if (visited.has(objId)) continue;
-            visited.add(objId);
-
-            const pt = pdfjsLib.Util.applyTransform([0, 0], ctm);
-            const vPt = viewport.convertToViewportPoint(pt[0], pt[1]);
-            const screenY = vPt[1];
-
-            try {
-              let imgObj = null;
-              if (page.objs.has(objId)) {
-                imgObj = page.objs.get(objId);
-              } else if (page.commonObjs.has(objId)) {
-                imgObj = page.commonObjs.get(objId);
-              }
-
-              if (imgObj && imgObj.data && imgObj.width > 40 && imgObj.height > 40) {
-                const canvas = document.createElement('canvas');
-                canvas.width = imgObj.width;
-                canvas.height = imgObj.height;
-                const ctx = canvas.getContext('2d');
-
-                let fullImageData;
-                if (imgObj.data.length === imgObj.width * imgObj.height * 4) {
-                  fullImageData = new ImageData(new Uint8ClampedArray(imgObj.data.buffer), imgObj.width, imgObj.height);
-                } else {
-                  fullImageData = ctx.createImageData(imgObj.width, imgObj.height);
-                  let s = 0, d = 0;
-                  for (let p = 0; p < imgObj.width * imgObj.height; p++) {
-                    fullImageData.data[d] = imgObj.data[s];
-                    fullImageData.data[d + 1] = imgObj.data[s + 1];
-                    fullImageData.data[d + 2] = imgObj.data[s + 2];
-                    fullImageData.data[d + 3] = 255;
-                    s += 3; d += 4;
-                  }
-                }
-                ctx.putImageData(fullImageData, 0, 0);
-
-                const wrapper = document.createElement('div');
-                wrapper.className = 'image-wrapper';
-                const img = document.createElement('img');
-                img.className = 'extracted-img';
-                img.src = canvas.toDataURL();
-                wrapper.appendChild(img);
-
-                imageItems.push({
-                  type: 'image',
-                  y: screenY,
-                  element: wrapper
-                });
-              }
-            } catch (innerErr) {
-              console.warn('Skipping image:', innerErr);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Image extraction finished with warnings:', err);
-      }
-      return imageItems;
-    }
-
     fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      readerArea.innerHTML = '<div class="empty-state"><h3>Parsing structure, typography, and photos...</h3></div>';
+      const fileName = file.name.toLowerCase();
+      readerArea.innerHTML = '<div class="empty-state"><h3>Loading document structure...</h3></div>';
 
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      // 1. DOCX Handling (Word Documents)
+      if (fileName.endsWith('.docx') || file.type.includes('wordprocessingml')) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          // Mammoth converts Word XML into semantic HTML with bold, italics, headers & inline images
+          const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+          readerArea.innerHTML = result.value || '<div class="empty-state"><p>Empty document.</p></div>';
+        } catch (err) {
+          readerArea.innerHTML = `<div class="empty-state"><h3>Error reading .docx file: ${err.message}</h3></div>`;
+        }
+      } 
+      // 2. PDF Handling
+      else if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
         try {
           const buffer = await file.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({
-            data: buffer,
-            isOffscreenCanvasSupported: false
-          }).promise;
-
+          const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
           readerArea.innerHTML = '';
 
           for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
-            const viewport = page.getViewport({ scale: 1.0 });
-            const textData = await page.getTextContent();
-            const stylesDict = textData.styles || {};
+            const textContent = await page.getTextContent();
+            let pageText = '';
 
-            const images = await extractImagesSafely(page, viewport);
-
-            // Reconstruct text items with resolved style metadata
-            const textItems = [];
-            textData.items.forEach(item => {
-              if (!item.str.trim()) return;
-              const pt = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
-              const fontSize = Math.round(Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]));
-              const traits = getFontTraits(item, stylesDict);
-
-              textItems.push({
-                str: item.str,
-                x: pt[0],
-                y: pt[1],
-                size: fontSize,
-                isBold: traits.isBold,
-                isItalic: traits.isItalic
-              });
+            textContent.items.forEach(item => {
+              pageText += (item.str + ' ');
             });
 
-            // Group by vertical line (tolerance +/- 3px)
-            const lines = [];
-            textItems.forEach(it => {
-              let line = lines.find(l => Math.abs(l.y - it.y) <= 3);
-              if (!line) {
-                line = { y: it.y, items: [] };
-                lines.push(line);
-              }
-              line.items.push(it);
-            });
-
-            lines.sort((a, b) => a.y - b.y);
-
-            // Reconstruct HTML for each visual line
-            const assembledLines = lines.map(line => {
-              line.items.sort((a, b) => a.x - b.x);
-
-              let raw = '';
-              let html = '';
-              let maxFontSize = 0;
-              let boldCount = 0;
-
-              line.items.forEach((token, idx) => {
-                let tokenHtml = escapeHtml(token.str);
-
-                if (token.isBold && token.isItalic) {
-                  tokenHtml = `<strong class="is-bold"><em class="is-italic">${tokenHtml}</em></strong>`;
-                } else if (token.isBold) {
-                  tokenHtml = `<strong class="is-bold">${tokenHtml}</strong>`;
-                } else if (token.isItalic) {
-                  tokenHtml = `<em class="is-italic">${tokenHtml}</em>`;
-                }
-
-                const needsSpace = idx > 0 && (token.x - (line.items[idx - 1].x + line.items[idx - 1].size * 0.5) > 2);
-                const separator = (needsSpace && !raw.endsWith(' ')) ? ' ' : '';
-
-                raw += separator + token.str;
-                html += separator + tokenHtml;
-                if (token.size > maxFontSize) maxFontSize = token.size;
-                if (token.isBold) boldCount++;
-              });
-
-              return {
-                y: line.y,
-                raw: raw.trim(),
-                html: html.trim(),
-                maxFontSize: maxFontSize,
-                isMostlyBold: boldCount >= (line.items.length * 0.5)
-              };
-            });
-
-            const allSizes = assembledLines.map(l => l.maxFontSize).filter(s => s > 0).sort((a, b) => a - b);
-            const medianSize = allSizes.length ? allSizes[Math.floor(allSizes.length / 2)] : 12;
-
-            const spacings = [];
-            for (let i = 1; i < assembledLines.length; i++) {
-              const diff = assembledLines[i].y - assembledLines[i - 1].y;
-              if (diff > 4 && diff < 50) spacings.push(diff);
-            }
-            spacings.sort((a, b) => a - b);
-            const medianSpacing = spacings.length ? spacings[Math.floor(spacings.length / 2)] : 14;
-
-            // Structure Headings and Paragraphs
-            const contentBlocks = [];
-            let currentParaHtml = '';
-            let currentParaRaw = '';
-            let currentParaY = assembledLines.length ? assembledLines[0].y : 0;
-
-            function commitPara() {
-              if (currentParaHtml.trim()) {
-                contentBlocks.push({
-                  type: 'paragraph',
-                  y: currentParaY,
-                  html: currentParaHtml
-                });
-                currentParaHtml = '';
-                currentParaRaw = '';
-              }
-            }
-
-            for (let i = 0; i < assembledLines.length; i++) {
-              const curr = assembledLines[i];
-              const prev = assembledLines[i - 1];
-
-              const isHeadingSize = curr.maxFontSize >= (medianSize * 1.18);
-              const isShort = curr.raw.length < 80;
-              const isHeading = (isHeadingSize || (curr.isMostlyBold && isShort)) && !/[.;]$/.test(curr.raw);
-
-              if (isHeading) {
-                commitPara();
-                contentBlocks.push({
-                  type: 'heading',
-                  y: curr.y,
-                  html: curr.html
-                });
-                continue;
-              }
-
-              if (!currentParaHtml) {
-                currentParaHtml = curr.html;
-                currentParaRaw = curr.raw;
-                currentParaY = curr.y;
-                continue;
-              }
-
-              const lineGap = curr.y - prev.y;
-              const isDistinctParagraphGap = lineGap > (medianSpacing * 1.38);
-              const prevEndsSentence = /[.!?:"']$/.test(currentParaRaw.trim());
-
-              if (isDistinctParagraphGap || (prevEndsSentence && lineGap > medianSpacing * 1.15)) {
-                commitPara();
-                currentParaHtml = curr.html;
-                currentParaRaw = curr.raw;
-                currentParaY = curr.y;
-              } else {
-                if (currentParaRaw.endsWith('-')) {
-                  currentParaHtml = currentParaHtml.slice(0, -1) + curr.html;
-                  currentParaRaw = currentParaRaw.slice(0, -1) + curr.raw;
-                } else {
-                  currentParaHtml += ' ' + curr.html;
-                  currentParaRaw += ' ' + curr.raw;
-                }
-              }
-            }
-            commitPara();
-
-            const allElements = [...contentBlocks, ...images];
-            allElements.sort((a, b) => a.y - b.y);
-
-            const block = document.createElement('section');
-            block.className = 'page-block';
-
-            const header = document.createElement('div');
-            header.className = 'page-header';
-            header.textContent = `— Page ${pageNum} —`;
-            block.appendChild(header);
-
-            allElements.forEach(item => {
-              if (item.type === 'heading') {
-                const h = document.createElement('h3');
-                h.className = 'heading';
-                h.innerHTML = item.html;
-                block.appendChild(h);
-              } else if (item.type === 'paragraph') {
-                const p = document.createElement('p');
-                p.className = 'paragraph';
-                p.innerHTML = item.html;
-                block.appendChild(p);
-              } else if (item.type === 'image') {
-                block.appendChild(item.element);
-              }
-            });
-
-            readerArea.appendChild(block);
+            const p = document.createElement('p');
+            p.textContent = pageText;
+            readerArea.appendChild(p);
           }
         } catch (err) {
-          readerArea.innerHTML = `<div class="empty-state"><h3>Error loading PDF: ${err.message}</h3></div>`;
+          readerArea.innerHTML = `<div class="empty-state"><h3>Error reading PDF: ${err.message}</h3></div>`;
         }
-      } else {
+      } 
+      // 3. Plain Text / Markdown Handling
+      else {
         const reader = new FileReader();
         reader.onload = (evt) => {
           readerArea.innerHTML = '';
@@ -621,7 +337,6 @@
             const cleanPara = para.replace(/\n+/g, ' ').trim();
             if (cleanPara) {
               const p = document.createElement('p');
-              p.className = 'paragraph';
               p.textContent = cleanPara;
               readerArea.appendChild(p);
             }
