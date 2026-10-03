@@ -147,7 +147,6 @@
       letter-spacing: 0.12em;
     }
 
-    /* Headings */
     .heading {
       font-size: calc(var(--font-size) * 1.25);
       line-height: calc(var(--line-height) * 0.95);
@@ -158,13 +157,12 @@
       font-weight: bold;
     }
 
-    /* Paragraphs */
     .paragraph {
       font-size: var(--font-size);
       line-height: var(--line-height);
       letter-spacing: var(--letter-spacing);
       word-spacing: var(--word-spacing);
-      margin-bottom: 1.6em; /* Distinct blank line equivalent */
+      margin-bottom: 1.6em;
       text-align: left;
     }
 
@@ -234,8 +232,8 @@
 
   <main id="readerArea">
     <div class="empty-state">
-      <h2>v2.4 Ready</h2>
-      <p>Tap "Open File" to load your document.</p>
+      <h2>v2.5 Ready</h2>
+      <p>Tap "Open File" above to load your document.</p>
     </div>
   </main>
 
@@ -278,112 +276,90 @@
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    // Resolve font styles directly from page font dictionary
-    async function resolveFontStyles(page, items) {
-      const fontMap = {};
-      const uniqueFontNames = [...new Set(items.map(it => it.fontName).filter(Boolean))];
-
-      await Promise.all(uniqueFontNames.map(fName => {
-        return new Promise(resolve => {
-          if (page.commonObjs.has(fName)) {
-            const fontObj = page.commonObjs.get(fName);
-            fontMap[fName] = parseFontObj(fontObj);
-            resolve();
-          } else {
-            page.commonObjs.get(fName, (fontObj) => {
-              fontMap[fName] = parseFontObj(fontObj);
-              resolve();
-            });
-          }
-        });
-      }));
-
-      return fontMap;
-    }
-
-    function parseFontObj(fontObj) {
-      if (!fontObj) return { isBold: false, isItalic: false };
-      const name = (fontObj.name || fontObj.fallbackName || '').toLowerCase();
-      const isBold = fontObj.bold || name.includes('bold') || name.includes('black') || name.includes('heavy') || name.includes('w7') || name.includes('w8');
-      const isItalic = fontObj.italic || name.includes('italic') || name.includes('oblique') || name.includes('slant');
+    // Direct synchronous font styling lookup
+    function detectFontStyles(fontName) {
+      if (!fontName) return { isBold: false, isItalic: false };
+      const f = fontName.toLowerCase();
+      const isBold = f.includes('bold') || f.includes('black') || f.includes('heavy') || f.includes('w7') || f.includes('w8') || f.includes('bolder');
+      const isItalic = f.includes('italic') || f.includes('oblique') || f.includes('slant');
       return { isBold, isItalic };
     }
 
-    // Extract images with normalized viewport coordinates
-    async function extractImagesWithPositions(page, viewport) {
-      const ops = await page.getOperatorList();
+    // Robust image extraction with safe error handling
+    async function extractImagesSafely(page, viewport) {
       const imageItems = [];
-      const visited = new Set();
-      let ctm = [1, 0, 0, 1, 0, 0];
+      try {
+        const ops = await page.getOperatorList();
+        const visited = new Set();
+        let ctm = [1, 0, 0, 1, 0, 0];
 
-      for (let i = 0; i < ops.fnArray.length; i++) {
-        const fn = ops.fnArray[i];
-        const args = ops.argsArray[i];
+        for (let i = 0; i < ops.fnArray.length; i++) {
+          const fn = ops.fnArray[i];
+          const args = ops.argsArray[i];
 
-        if (fn === pdfjsLib.OPS.transform) {
-          ctm = args;
-        }
+          if (fn === pdfjsLib.OPS.transform) {
+            ctm = args;
+          }
 
-        if (fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageXObjectRepeat) {
-          const objId = args[0];
-          if (visited.has(objId)) continue;
-          visited.add(objId);
+          if (fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageXObjectRepeat) {
+            const objId = args[0];
+            if (visited.has(objId)) continue;
+            visited.add(objId);
 
-          // Convert PDF transform to Viewport Y coordinate
-          const pt = pdfjsLib.Util.applyTransform([0, 0], ctm);
-          const vPt = viewport.convertToViewportPoint(pt[0], pt[1]);
-          const screenY = vPt[1]; // Viewport Y flows naturally top-to-bottom
+            const pt = pdfjsLib.Util.applyTransform([0, 0], ctm);
+            const vPt = viewport.convertToViewportPoint(pt[0], pt[1]);
+            const screenY = vPt[1];
 
-          try {
-            const imgData = await new Promise((resolve) => {
+            try {
+              let imgObj = null;
               if (page.objs.has(objId)) {
-                resolve(page.objs.get(objId));
+                imgObj = page.objs.get(objId);
               } else if (page.commonObjs.has(objId)) {
-                resolve(page.commonObjs.get(objId));
-              } else {
-                page.objs.get(objId, resolve);
+                imgObj = page.commonObjs.get(objId);
               }
-            });
 
-            if (imgData && imgData.data && imgData.width > 40 && imgData.height > 40) {
-              const canvas = document.createElement('canvas');
-              canvas.width = imgData.width;
-              canvas.height = imgData.height;
-              const ctx = canvas.getContext('2d');
+              if (imgObj && imgObj.data && imgObj.width > 40 && imgObj.height > 40) {
+                const canvas = document.createElement('canvas');
+                canvas.width = imgObj.width;
+                canvas.height = imgObj.height;
+                const ctx = canvas.getContext('2d');
 
-              let fullImageData;
-              if (imgData.data.length === imgData.width * imgData.height * 4) {
-                fullImageData = new ImageData(new Uint8ClampedArray(imgData.data.buffer), imgData.width, imgData.height);
-              } else {
-                fullImageData = ctx.createImageData(imgData.width, imgData.height);
-                let s = 0, d = 0;
-                for (let p = 0; p < imgData.width * imgData.height; p++) {
-                  fullImageData.data[d] = imgData.data[s];
-                  fullImageData.data[d + 1] = imgData.data[s + 1];
-                  fullImageData.data[d + 2] = imgData.data[s + 2];
-                  fullImageData.data[d + 3] = 255;
-                  s += 3; d += 4;
+                let fullImageData;
+                if (imgObj.data.length === imgObj.width * imgObj.height * 4) {
+                  fullImageData = new ImageData(new Uint8ClampedArray(imgObj.data.buffer), imgObj.width, imgObj.height);
+                } else {
+                  fullImageData = ctx.createImageData(imgObj.width, imgObj.height);
+                  let s = 0, d = 0;
+                  for (let p = 0; p < imgObj.width * imgObj.height; p++) {
+                    fullImageData.data[d] = imgObj.data[s];
+                    fullImageData.data[d + 1] = imgObj.data[s + 1];
+                    fullImageData.data[d + 2] = imgObj.data[s + 2];
+                    fullImageData.data[d + 3] = 255;
+                    s += 3; d += 4;
+                  }
                 }
+                ctx.putImageData(fullImageData, 0, 0);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'image-wrapper';
+                const img = document.createElement('img');
+                img.className = 'extracted-img';
+                img.src = canvas.toDataURL();
+                wrapper.appendChild(img);
+
+                imageItems.push({
+                  type: 'image',
+                  y: screenY,
+                  element: wrapper
+                });
               }
-              ctx.putImageData(fullImageData, 0, 0);
-
-              const wrapper = document.createElement('div');
-              wrapper.className = 'image-wrapper';
-              const img = document.createElement('img');
-              img.className = 'extracted-img';
-              img.src = canvas.toDataURL();
-              wrapper.appendChild(img);
-
-              imageItems.push({
-                type: 'image',
-                y: screenY,
-                element: wrapper
-              });
+            } catch (innerErr) {
+              console.warn('Skipping unreadable image buffer:', innerErr);
             }
-          } catch (e) {
-            console.warn('Image extraction skipped:', e);
           }
         }
+      } catch (err) {
+        console.warn('Image extraction failed gracefully:', err);
       }
       return imageItems;
     }
@@ -409,31 +385,28 @@
             const viewport = page.getViewport({ scale: 1.0 });
             const textData = await page.getTextContent();
 
-            // 1. Resolve actual font objects from PDF resources
-            const fontMeta = await resolveFontStyles(page, textData.items);
+            // Extract images without locking the thread
+            const images = await extractImagesSafely(page, viewport);
 
-            // 2. Extract images with matched viewport Y
-            const images = await extractImagesWithPositions(page, viewport);
-
-            // 3. Convert all text items into screen coordinates (Y top-to-bottom)
+            // Group text chunks into visual lines
             const textItems = [];
             textData.items.forEach(item => {
               if (!item.str.trim()) return;
               const pt = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
               const fontSize = Math.round(Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]));
-              const meta = fontMeta[item.fontName] || { isBold: false, isItalic: false };
+              const styles = detectFontStyles(item.fontName);
 
               textItems.push({
                 str: item.str,
                 x: pt[0],
                 y: pt[1],
                 size: fontSize,
-                isBold: meta.isBold,
-                isItalic: meta.isItalic
+                isBold: styles.isBold,
+                isItalic: styles.isItalic
               });
             });
 
-            // Group into visual lines (tolerance +/- 3px)
+            // Group by vertical coordinate (3px threshold)
             const lines = [];
             textItems.forEach(it => {
               let line = lines.find(l => Math.abs(l.y - it.y) <= 3);
@@ -447,7 +420,7 @@
             // Sort lines top-to-bottom
             lines.sort((a, b) => a.y - b.y);
 
-            // Assemble each line left-to-right with HTML styling
+            // Reconstruct text tokens with formatting
             const assembledLines = lines.map(line => {
               line.items.sort((a, b) => a.x - b.x);
 
@@ -484,7 +457,7 @@
               };
             });
 
-            // Calculate median font size and median line spacing
+            // Calculate median font size & median spacing
             const allSizes = assembledLines.map(l => l.maxFontSize).filter(s => s > 0).sort((a, b) => a - b);
             const medianSize = allSizes.length ? allSizes[Math.floor(allSizes.length / 2)] : 12;
 
@@ -496,7 +469,7 @@
             spacings.sort((a, b) => a - b);
             const medianSpacing = spacings.length ? spacings[Math.floor(spacings.length / 2)] : 14;
 
-            // Group into Headings and Paragraphs
+            // Separate headings from flowing paragraphs
             const contentBlocks = [];
             let currentParaHtml = '';
             let currentParaRaw = '';
@@ -549,7 +522,7 @@
                 currentParaRaw = curr.raw;
                 currentParaY = curr.y;
               } else {
-                // Unwrap mid-sentence line break
+                // Connect mid-sentence wrapped lines
                 if (currentParaRaw.endsWith('-')) {
                   currentParaHtml = currentParaHtml.slice(0, -1) + curr.html;
                   currentParaRaw = currentParaRaw.slice(0, -1) + curr.raw;
@@ -561,7 +534,7 @@
             }
             commitPara();
 
-            // Interleave text blocks and images by visual top-to-bottom order (Y ascending)
+            // Interleave text and images in visual top-to-bottom sequence
             const allElements = [...contentBlocks, ...images];
             allElements.sort((a, b) => a.y - b.y);
 
