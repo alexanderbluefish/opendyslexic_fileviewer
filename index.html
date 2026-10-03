@@ -12,10 +12,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
+    /* Direct raw font files from canonical repositories */
     @font-face {
       font-family: 'OpenDyslexic';
-      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Regular.woff') format('woff'),
-           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Regular.otf') format('opentype');
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-Regular.otf') format('opentype');
       font-weight: normal;
       font-style: normal;
       font-display: swap;
@@ -23,18 +23,32 @@
 
     @font-face {
       font-family: 'OpenDyslexic';
-      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Bold.woff') format('woff'),
-           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Bold.otf') format('opentype');
-      font-weight: bold;
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-Bold.otf') format('opentype');
+      font-weight: 700;
       font-style: normal;
       font-display: swap;
     }
 
     @font-face {
       font-family: 'OpenDyslexic';
-      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Italic.woff') format('woff'),
-           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Italic.otf') format('opentype');
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-Bold.otf') format('opentype');
+      font-weight: 900;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'OpenDyslexic';
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-Italic.otf') format('opentype');
       font-weight: normal;
+      font-style: italic;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'OpenDyslexic';
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@HEAD/otf/OpenDyslexic-BoldItalic.otf') format('opentype');
+      font-weight: 700;
       font-style: italic;
       font-display: swap;
     }
@@ -42,6 +56,7 @@
     :root {
       --bg-color: #fbf0d9;
       --text-color: #111111;
+      --accent-color: #0071e3;
       --font-size: 22px;
       --line-height: 1.8;
       --letter-spacing: 0.06em;
@@ -148,13 +163,13 @@
     }
 
     .heading {
-      font-size: calc(var(--font-size) * 1.25);
+      font-size: calc(var(--font-size) * 1.3);
       line-height: calc(var(--line-height) * 0.95);
       letter-spacing: var(--letter-spacing);
       word-spacing: var(--word-spacing);
       margin-top: 1.8em;
       margin-bottom: 0.8em;
-      font-weight: bold;
+      font-weight: 900;
     }
 
     .paragraph {
@@ -166,14 +181,18 @@
       text-align: left;
     }
 
-    strong {
+    /* High-contrast bold treatment */
+    strong, b, .is-bold {
       font-family: 'OpenDyslexic', sans-serif !important;
-      font-weight: bold;
+      font-weight: 900 !important;
+      text-shadow: 0.4px 0 0 currentColor, -0.2px 0 0 currentColor; /* Enhances visual weight on iPads */
+      display: inline;
     }
 
-    em {
+    em, i, .is-italic {
       font-family: 'OpenDyslexic', sans-serif !important;
-      font-style: italic;
+      font-style: italic !important;
+      display: inline;
     }
 
     .image-wrapper {
@@ -232,8 +251,8 @@
 
   <main id="readerArea">
     <div class="empty-state">
-      <h2>v2.5 Ready</h2>
-      <p>Tap "Open File" above to load your document.</p>
+      <h2>v2.6 Bold Engine Active</h2>
+      <p>Tap "Open File" to load your document.</p>
     </div>
   </main>
 
@@ -276,16 +295,44 @@
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    // Direct synchronous font styling lookup
-    function detectFontStyles(fontName) {
-      if (!fontName) return { isBold: false, isItalic: false };
-      const f = fontName.toLowerCase();
-      const isBold = f.includes('bold') || f.includes('black') || f.includes('heavy') || f.includes('w7') || f.includes('w8') || f.includes('bolder');
-      const isItalic = f.includes('italic') || f.includes('oblique') || f.includes('slant');
+    // Inspect real font family from textContent.styles dictionary
+    function getFontTraits(item, stylesDict) {
+      let isBold = false;
+      let isItalic = false;
+
+      const styleObj = stylesDict ? stylesDict[item.fontName] : null;
+      const combined = [
+        item.fontName || '',
+        styleObj ? (styleObj.fontFamily || '') : ''
+      ].join(' ').toLowerCase();
+
+      // Detection matching PostScript names, standard font names, and weights
+      if (
+        combined.includes('bold') ||
+        combined.includes('black') ||
+        combined.includes('heavy') ||
+        combined.includes('bolder') ||
+        combined.includes('w7') ||
+        combined.includes('w8') ||
+        combined.includes('w9') ||
+        combined.includes('semibold') ||
+        combined.includes('medium')
+      ) {
+        isBold = true;
+      }
+
+      if (
+        combined.includes('italic') ||
+        combined.includes('oblique') ||
+        combined.includes('slant')
+      ) {
+        isItalic = true;
+      }
+
       return { isBold, isItalic };
     }
 
-    // Robust image extraction with safe error handling
+    // Safe image extractor
     async function extractImagesSafely(page, viewport) {
       const imageItems = [];
       try {
@@ -354,12 +401,12 @@
                 });
               }
             } catch (innerErr) {
-              console.warn('Skipping unreadable image buffer:', innerErr);
+              console.warn('Skipping image:', innerErr);
             }
           }
         }
       } catch (err) {
-        console.warn('Image extraction failed gracefully:', err);
+        console.warn('Image extraction finished with warnings:', err);
       }
       return imageItems;
     }
@@ -384,29 +431,29 @@
             const page = await pdf.getPage(pageNum);
             const viewport = page.getViewport({ scale: 1.0 });
             const textData = await page.getTextContent();
+            const stylesDict = textData.styles || {};
 
-            // Extract images without locking the thread
             const images = await extractImagesSafely(page, viewport);
 
-            // Group text chunks into visual lines
+            // Reconstruct text items with resolved style metadata
             const textItems = [];
             textData.items.forEach(item => {
               if (!item.str.trim()) return;
               const pt = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
               const fontSize = Math.round(Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]));
-              const styles = detectFontStyles(item.fontName);
+              const traits = getFontTraits(item, stylesDict);
 
               textItems.push({
                 str: item.str,
                 x: pt[0],
                 y: pt[1],
                 size: fontSize,
-                isBold: styles.isBold,
-                isItalic: styles.isItalic
+                isBold: traits.isBold,
+                isItalic: traits.isItalic
               });
             });
 
-            // Group by vertical coordinate (3px threshold)
+            // Group by vertical line (tolerance +/- 3px)
             const lines = [];
             textItems.forEach(it => {
               let line = lines.find(l => Math.abs(l.y - it.y) <= 3);
@@ -417,10 +464,9 @@
               line.items.push(it);
             });
 
-            // Sort lines top-to-bottom
             lines.sort((a, b) => a.y - b.y);
 
-            // Reconstruct text tokens with formatting
+            // Reconstruct HTML for each visual line
             const assembledLines = lines.map(line => {
               line.items.sort((a, b) => a.x - b.x);
 
@@ -431,12 +477,13 @@
 
               line.items.forEach((token, idx) => {
                 let tokenHtml = escapeHtml(token.str);
+
                 if (token.isBold && token.isItalic) {
-                  tokenHtml = `<strong><em>${tokenHtml}</em></strong>`;
+                  tokenHtml = `<strong class="is-bold"><em class="is-italic">${tokenHtml}</em></strong>`;
                 } else if (token.isBold) {
-                  tokenHtml = `<strong>${tokenHtml}</strong>`;
+                  tokenHtml = `<strong class="is-bold">${tokenHtml}</strong>`;
                 } else if (token.isItalic) {
-                  tokenHtml = `<em>${tokenHtml}</em>`;
+                  tokenHtml = `<em class="is-italic">${tokenHtml}</em>`;
                 }
 
                 const needsSpace = idx > 0 && (token.x - (line.items[idx - 1].x + line.items[idx - 1].size * 0.5) > 2);
@@ -457,7 +504,6 @@
               };
             });
 
-            // Calculate median font size & median spacing
             const allSizes = assembledLines.map(l => l.maxFontSize).filter(s => s > 0).sort((a, b) => a - b);
             const medianSize = allSizes.length ? allSizes[Math.floor(allSizes.length / 2)] : 12;
 
@@ -469,7 +515,7 @@
             spacings.sort((a, b) => a - b);
             const medianSpacing = spacings.length ? spacings[Math.floor(spacings.length / 2)] : 14;
 
-            // Separate headings from flowing paragraphs
+            // Structure Headings and Paragraphs
             const contentBlocks = [];
             let currentParaHtml = '';
             let currentParaRaw = '';
@@ -522,7 +568,6 @@
                 currentParaRaw = curr.raw;
                 currentParaY = curr.y;
               } else {
-                // Connect mid-sentence wrapped lines
                 if (currentParaRaw.endsWith('-')) {
                   currentParaHtml = currentParaHtml.slice(0, -1) + curr.html;
                   currentParaRaw = currentParaRaw.slice(0, -1) + curr.raw;
@@ -534,7 +579,6 @@
             }
             commitPara();
 
-            // Interleave text and images in visual top-to-bottom sequence
             const allElements = [...contentBlocks, ...images];
             allElements.sort((a, b) => a.y - b.y);
 
@@ -568,7 +612,6 @@
           readerArea.innerHTML = `<div class="empty-state"><h3>Error loading PDF: ${err.message}</h3></div>`;
         }
       } else {
-        // Plain text / Markdown
         const reader = new FileReader();
         reader.onload = (evt) => {
           readerArea.innerHTML = '';
