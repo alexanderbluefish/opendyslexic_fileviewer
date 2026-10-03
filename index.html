@@ -33,8 +33,10 @@
     :root {
       --bg-color: #fbf0d9;
       --text-color: #111111;
-      --font-scale: 1.0;
-      --letter-spacing: 0.05em;
+      --font-size: 22px;
+      --line-height: 1.8;
+      --letter-spacing: 0.08em;
+      --word-spacing: 0.16em;
     }
 
     * {
@@ -49,7 +51,7 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      font-family: 'OpenDyslexic', sans-serif;
+      font-family: 'OpenDyslexic', sans-serif !important;
       transition: background-color 0.2s ease, color 0.2s ease;
       -webkit-text-size-adjust: 100%;
     }
@@ -116,83 +118,56 @@
 
     main {
       flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 24px 12px;
-      gap: 24px;
+      max-width: 820px;
       width: 100%;
+      margin: 0 auto;
+      padding: 30px 20px;
     }
 
-    /* Container for each PDF page */
-    .page-container {
-      position: relative;
-      background: #ffffff;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
-      border-radius: 4px;
-      overflow: hidden;
+    .page-block {
+      margin-bottom: 40px;
+      padding-bottom: 30px;
+      border-bottom: 1px dashed rgba(0, 0, 0, 0.15);
     }
 
-    /* Canvas renders original document graphics and images */
-    .pdf-canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
+    .page-header {
+      font-size: 0.85em;
+      opacity: 0.6;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
     }
 
-    /* Tint overlay keeps images visible while applying background contrast tint */
-    .page-tint-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      background-color: var(--bg-color);
-      mix-blend-mode: multiply;
-      opacity: 0.82;
-    }
-
-    /* Text layer replaces original text with OpenDyslexic */
-    .textLayer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      overflow: hidden;
-      line-height: 1.0;
-    }
-
-    .textLayer span {
-      position: absolute;
-      color: var(--text-color) !important;
-      font-family: 'OpenDyslexic', sans-serif !important;
+    .text-content {
+      font-size: var(--font-size);
+      line-height: var(--line-height);
       letter-spacing: var(--letter-spacing);
-      white-space: pre;
-      cursor: text;
-      transform-origin: 0% 0%;
-      background: var(--bg-color); /* Shields original underlying raster text */
-      padding: 1px 2px;
-      border-radius: 2px;
-    }
-
-    /* Plain text fallback viewer */
-    #plainTextWrapper {
-      max-width: 850px;
-      width: 100%;
+      word-spacing: var(--word-spacing);
       white-space: pre-wrap;
       word-break: break-word;
-      font-size: calc(20px * var(--font-scale));
-      line-height: 1.8;
-      padding: 20px;
+      margin-bottom: 24px;
     }
 
-    .status-msg {
+    .images-container {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    .extracted-img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      background: #fff;
+    }
+
+    .empty-state {
       text-align: center;
-      padding: 40px;
-      color: rgba(0, 0, 0, 0.6);
-      font-size: 1.1rem;
+      padding-top: 60px;
+      opacity: 0.65;
     }
   </style>
 </head>
@@ -207,47 +182,56 @@
     </div>
 
     <div class="toolbar-group">
-      <label for="fontScale">Size:</label>
-      <input type="range" id="fontScale" min="0.8" max="1.8" step="0.05" value="1.0" />
-      <span id="scaleDisplay">100%</span>
+      <label for="fontSize">Size:</label>
+      <input type="range" id="fontSize" min="16" max="44" value="22" />
+      <span id="fontSizeDisplay">22px</span>
     </div>
 
     <div class="toolbar-group">
-      <label>Background Tint:</label>
+      <label for="lineHeight">Spacing:</label>
+      <input type="range" id="lineHeight" min="1.4" max="2.6" step="0.1" value="1.8" />
+    </div>
+
+    <div class="toolbar-group">
+      <label>Background:</label>
       <div class="color-presets">
         <button class="preset-btn" style="background: #fbf0d9;" title="Peach Cream" data-bg="#fbf0d9" data-text="#111111"></button>
         <button class="preset-btn" style="background: #e3eedd;" title="Soft Mint" data-bg="#e3eedd" data-text="#142616"></button>
         <button class="preset-btn" style="background: #dcebf7;" title="Soft Blue" data-bg="#dcebf7" data-text="#102538"></button>
-        <button class="preset-btn" style="background: #ffffff;" title="Clean White" data-bg="#ffffff" data-text="#111111"></button>
-        <button class="preset-btn" style="background: #e5e5e5;" title="Muted Gray" data-bg="#e5e5e5" data-text="#1c1c1c"></button>
+        <button class="preset-btn" style="background: #eaeaea;" title="Muted Gray" data-bg="#eaeaea" data-text="#1c1c1c"></button>
+        <button class="preset-btn" style="background: #1e1e1e;" title="Night Comfort" data-bg="#1e1e1e" data-text="#d8c593"></button>
       </div>
       <input type="color" id="customBg" value="#fbf0d9" title="Custom Tint" />
     </div>
   </header>
 
-  <main id="viewerContainer">
-    <div class="status-msg">Tap "Open File" to load a PDF with photos or text document.</div>
+  <main id="readerArea">
+    <div class="empty-state">
+      <h2>OpenDyslexic Reader Ready</h2>
+      <p>Tap "Open File" above to load a document. Text will be cleanly reformatted and photos preserved.</p>
+    </div>
   </main>
 
   <script>
-    const viewer = document.getElementById('viewerContainer');
+    const readerArea = document.getElementById('readerArea');
     const fileInput = document.getElementById('fileInput');
-    const fontScaleSlider = document.getElementById('fontScale');
-    const scaleDisplay = document.getElementById('scaleDisplay');
+    const fontSizeSlider = document.getElementById('fontSize');
+    const fontSizeDisplay = document.getElementById('fontSizeDisplay');
+    const lineHeightSlider = document.getElementById('lineHeight');
     const customBg = document.getElementById('customBg');
     const presetBtns = document.querySelectorAll('.preset-btn');
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    let currentPdf = null;
-    let currentScaleMultiplier = 1.0;
+    // Toolbar Listeners
+    fontSizeSlider.addEventListener('input', (e) => {
+      const val = `${e.target.value}px`;
+      document.documentElement.style.setProperty('--font-size', val);
+      fontSizeDisplay.textContent = val;
+    });
 
-    // Controls
-    fontScaleSlider.addEventListener('input', (e) => {
-      currentScaleMultiplier = parseFloat(e.target.value);
-      scaleDisplay.textContent = Math.round(currentScaleMultiplier * 100) + '%';
-      document.documentElement.style.setProperty('--font-scale', currentScaleMultiplier);
-      if (currentPdf) renderAllPages(currentPdf);
+    lineHeightSlider.addEventListener('input', (e) => {
+      document.documentElement.style.setProperty('--line-height', e.target.value);
     });
 
     customBg.addEventListener('input', (e) => {
@@ -264,103 +248,145 @@
       });
     });
 
-    // File processing
+    // Helper: extract raw image data from PDF.js objects
+    async function extractImagesFromPage(page) {
+      const ops = await page.getOperatorList();
+      const imageElements = [];
+      const visited = new Set();
+
+      for (let i = 0; i < ops.fnArray.length; i++) {
+        const fn = ops.fnArray[i];
+        if (fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageXObjectRepeat) {
+          const objId = ops.argsArray[i][0];
+          if (visited.has(objId)) continue;
+          visited.add(objId);
+
+          try {
+            const imgData = await new Promise((resolve) => {
+              // Retrieve image binary object from page resources
+              if (page.objs.has(objId)) {
+                resolve(page.objs.get(objId));
+              } else if (page.commonObjs.has(objId)) {
+                resolve(page.commonObjs.get(objId));
+              } else {
+                page.objs.get(objId, resolve);
+              }
+            });
+
+            if (imgData && imgData.data && imgData.width > 20 && imgData.height > 20) {
+              const canvas = document.createElement('canvas');
+              canvas.width = imgData.width;
+              canvas.height = imgData.height;
+              const ctx = canvas.getContext('2d');
+              
+              // Handle RGB / RGBA buffer correctly
+              let fullImageData;
+              if (imgData.data.length === imgData.width * imgData.height * 4) {
+                fullImageData = new ImageData(new Uint8ClampedArray(imgData.data.buffer), imgData.width, imgData.height);
+              } else {
+                fullImageData = ctx.createImageData(imgData.width, imgData.height);
+                let srcIdx = 0;
+                let destIdx = 0;
+                for (let p = 0; p < imgData.width * imgData.height; p++) {
+                  fullImageData.data[destIdx] = imgData.data[srcIdx];
+                  fullImageData.data[destIdx + 1] = imgData.data[srcIdx + 1];
+                  fullImageData.data[destIdx + 2] = imgData.data[srcIdx + 2];
+                  fullImageData.data[destIdx + 3] = 255;
+                  srcIdx += 3;
+                  destIdx += 4;
+                }
+              }
+              ctx.putImageData(fullImageData, 0, 0);
+
+              const img = document.createElement('img');
+              img.className = 'extracted-img';
+              img.src = canvas.toDataURL();
+              imageElements.push(img);
+            }
+          } catch (e) {
+            console.warn('Skipped an unsupported image stream:', e);
+          }
+        }
+      }
+      return imageElements;
+    }
+
+    // Process PDF and Text Files
     fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      viewer.innerHTML = '<div class="status-msg">Loading and rendering document...</div>';
+      readerArea.innerHTML = '<div class="empty-state"><h3>Parsing document and extracting photos...</h3></div>';
 
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         try {
           const buffer = await file.arrayBuffer();
-          currentPdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-          await renderAllPages(currentPdf);
+          // Disable offscreen canvas to allow reading binary image pixels
+          const pdf = await pdfjsLib.getDocument({
+            data: buffer,
+            isOffscreenCanvasSupported: false
+          }).promise;
+
+          readerArea.innerHTML = '';
+
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+
+            // 1. Extract pure text content
+            const textData = await page.getTextContent();
+            let pageText = '';
+            let lastY;
+
+            textData.items.forEach(item => {
+              if (lastY !== undefined && Math.abs(item.transform[5] - lastY) > 8) {
+                pageText += '\n';
+              } else if (pageText.length > 0 && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
+                pageText += ' ';
+              }
+              pageText += item.str;
+              lastY = item.transform[5];
+            });
+
+            // 2. Extract photos on this page
+            const images = await extractImagesFromPage(page);
+
+            // 3. Build page block
+            const block = document.createElement('section');
+            block.className = 'page-block';
+
+            const header = document.createElement('div');
+            header.className = 'page-header';
+            header.textContent = `— Page ${pageNum} —`;
+            block.appendChild(header);
+
+            if (pageText.trim()) {
+              const textEl = document.createElement('div');
+              textEl.className = 'text-content';
+              textEl.textContent = pageText;
+              block.appendChild(textEl);
+            }
+
+            if (images.length > 0) {
+              const imgContainer = document.createElement('div');
+              imgContainer.className = 'images-container';
+              images.forEach(img => imgContainer.appendChild(img));
+              block.appendChild(imgContainer);
+            }
+
+            readerArea.appendChild(block);
+          }
         } catch (err) {
-          viewer.innerHTML = `<div class="status-msg">Error rendering PDF: ${err.message}</div>`;
+          readerArea.innerHTML = `<div class="empty-state"><h3>Error loading PDF: ${err.message}</h3></div>`;
         }
       } else {
         // Plain text / Markdown
-        currentPdf = null;
         const reader = new FileReader();
         reader.onload = (evt) => {
-          viewer.innerHTML = `<div id="plainTextWrapper">${escapeHtml(evt.target.result)}</div>`;
+          readerArea.innerHTML = `<div class="text-content">${evt.target.result}</div>`;
         };
         reader.readAsText(file);
       }
     });
-
-    function escapeHtml(text) {
-      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
-
-    async function renderAllPages(pdf) {
-      viewer.innerHTML = '';
-      
-      // Calculate responsive target width for iPad display
-      const targetWidth = Math.min(window.innerWidth - 32, 850);
-
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const unscaledViewport = page.getViewport({ scale: 1.0 });
-        const scale = (targetWidth / unscaledViewport.width) * (window.devicePixelRatio || 1);
-        const viewport = page.getViewport({ scale: targetWidth / unscaledViewport.width });
-
-        // Container
-        const pageDiv = document.createElement('div');
-        pageDiv.className = 'page-container';
-        pageDiv.style.width = `${viewport.width}px`;
-        pageDiv.style.height = `${viewport.height}px`;
-
-        // 1. Base Canvas Layer: renders original images, shapes, and figures
-        const canvas = document.createElement('canvas');
-        canvas.className = 'pdf-canvas';
-        const ctx = canvas.getContext('2d');
-        canvas.width = Math.floor(viewport.width * (window.devicePixelRatio || 1));
-        canvas.height = Math.floor(viewport.height * (window.devicePixelRatio || 1));
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-
-        const renderContext = {
-          canvasContext: ctx,
-          viewport: page.getViewport({ scale: scale })
-        };
-        await page.render(renderContext).promise;
-        pageDiv.appendChild(canvas);
-
-        // 2. Background Tint Overlay
-        const tint = document.createElement('div');
-        tint.className = 'page-tint-overlay';
-        pageDiv.appendChild(tint);
-
-        // 3. Text Overlay: renders OpenDyslexic over original text locations
-        const textContent = await page.getTextContent();
-        const textLayer = document.createElement('div');
-        textLayer.className = 'textLayer';
-        textLayer.style.width = `${viewport.width}px`;
-        textLayer.style.height = `${viewport.height}px`;
-
-        textContent.items.forEach(item => {
-          if (!item.str.trim()) return;
-
-          const span = document.createElement('span');
-          span.textContent = item.str;
-
-          // Compute exact page coordinates from transformation matrix
-          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-          const fontSize = Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1]) * currentScaleMultiplier;
-          
-          span.style.left = `${tx[4]}px`;
-          span.style.top = `${tx[5] - fontSize}px`;
-          span.style.fontSize = `${fontSize}px`;
-
-          textLayer.appendChild(span);
-        });
-
-        pageDiv.appendChild(textLayer);
-        viewer.appendChild(pageDiv);
-      }
-    }
   </script>
 </body>
 </html>
