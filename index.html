@@ -30,6 +30,15 @@
       font-display: swap;
     }
 
+    @font-face {
+      font-family: 'OpenDyslexic';
+      src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/woff/OpenDyslexic-Italic.woff') format('woff'),
+           url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/otf/OpenDyslexic-Italic.otf') format('opentype');
+      font-weight: normal;
+      font-style: italic;
+      font-display: swap;
+    }
+
     :root {
       --bg-color: #fbf0d9;
       --text-color: #111111;
@@ -138,17 +147,37 @@
       letter-spacing: 0.12em;
     }
 
-    /* Paragraph styling with true empty line spacing */
+    /* Heading styling */
+    .heading {
+      font-size: calc(var(--font-size) * 1.25);
+      line-height: calc(var(--line-height) * 0.9);
+      letter-spacing: var(--letter-spacing);
+      word-spacing: var(--word-spacing);
+      margin-top: 1.6em;
+      margin-bottom: 0.8em;
+      font-weight: bold;
+    }
+
+    /* Paragraph styling */
     .paragraph {
       font-size: var(--font-size);
       line-height: var(--line-height);
       letter-spacing: var(--letter-spacing);
       word-spacing: var(--word-spacing);
-      margin-bottom: 1.6em; /* Creates the distinct paragraph gap */
+      margin-bottom: 1.6em;
       text-align: left;
     }
 
-    /* Embedded image container */
+    strong {
+      font-family: 'OpenDyslexic', sans-serif !important;
+      font-weight: bold;
+    }
+
+    em {
+      font-family: 'OpenDyslexic', sans-serif !important;
+      font-style: italic;
+    }
+
     .image-wrapper {
       margin: 28px 0;
       text-align: center;
@@ -206,7 +235,7 @@
   <main id="readerArea">
     <div class="empty-state">
       <h2>OpenDyslexic Reader Ready</h2>
-      <p>Tap "Open File" above to load a document with preserved paragraph flow and inline photos.</p>
+      <p>Tap "Open File" above to load a document with preserved headings, bold/italics, and inline photos.</p>
     </div>
   </main>
 
@@ -245,7 +274,11 @@
       });
     });
 
-    // Extract images with coordinate tracking (Y position)
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // Extract images with coordinate tracking
     async function extractImagesWithPositions(page) {
       const ops = await page.getOperatorList();
       const imageItems = [];
@@ -256,7 +289,6 @@
         const fn = ops.fnArray[i];
         const args = ops.argsArray[i];
 
-        // Track coordinate transformation matrices
         if (fn === pdfjsLib.OPS.transform) {
           currentMatrix = args;
         }
@@ -266,7 +298,6 @@
           if (visited.has(objId)) continue;
           visited.add(objId);
 
-          // PDF Y coordinates originate at the bottom; calculate top Y
           const imgY = currentMatrix[5];
 
           try {
@@ -324,12 +355,11 @@
       return imageItems;
     }
 
-    // Process PDF and reflow paragraphs
     fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      readerArea.innerHTML = '<div class="empty-state"><h3>Analyzing layout and reforming text flow...</h3></div>';
+      readerArea.innerHTML = '<div class="empty-state"><h3>Parsing structure, typography, and photos...</h3></div>';
 
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         try {
@@ -346,23 +376,55 @@
             const textData = await page.getTextContent();
             const images = await extractImagesWithPositions(page);
 
-            // Group text into actual structural lines based on Y positions
+            // Group text chunks into visual lines while preserving font styles
             const linesByY = [];
             textData.items.forEach(item => {
               if (!item.str.trim()) return;
+
               const y = Math.round(item.transform[5]);
+              const fontSize = Math.round(Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]));
+              const fontName = (item.fontName || '').toLowerCase();
+
+              const isBold = fontName.includes('bold') || fontName.includes('black') || fontName.includes('heavy') || fontName.includes('bolder');
+              const isItalic = fontName.includes('italic') || fontName.includes('oblique') || fontName.includes('slant');
+
+              let chunkHtml = escapeHtml(item.str);
+              if (isBold && isItalic) {
+                chunkHtml = `<strong><em>${chunkHtml}</em></strong>`;
+              } else if (isBold) {
+                chunkHtml = `<strong>${chunkHtml}</strong>`;
+              } else if (isItalic) {
+                chunkHtml = `<em>${chunkHtml}</em>`;
+              }
+
               const existingLine = linesByY.find(l => Math.abs(l.y - y) <= 4);
               if (existingLine) {
-                existingLine.text += (existingLine.text.endsWith(' ') ? '' : ' ') + item.str;
+                existingLine.rawText += (existingLine.rawText.endsWith(' ') ? '' : ' ') + item.str;
+                existingLine.html += (existingLine.html.endsWith(' ') ? '' : ' ') + chunkHtml;
+                existingLine.fontSizes.push(fontSize);
+                if (isBold) existingLine.boldChunks++;
+                existingLine.totalChunks++;
               } else {
-                linesByY.push({ y: y, text: item.str });
+                linesByY.push({
+                  y: y,
+                  rawText: item.str,
+                  html: chunkHtml,
+                  fontSizes: [fontSize],
+                  boldChunks: isBold ? 1 : 0,
+                  totalChunks: 1
+                });
               }
             });
 
-            // Sort lines top-to-bottom (PDF Y values go bottom-to-top)
+            // Sort lines top-to-bottom
             linesByY.sort((a, b) => b.y - a.y);
 
-            // Calculate median line gap to detect paragraph breaks
+            // Calculate median body font size & typical line gap
+            const allSizes = [];
+            linesByY.forEach(l => l.fontSizes.forEach(s => allSizes.push(s)));
+            allSizes.sort((a, b) => a - b);
+            const medianFontSize = allSizes.length ? allSizes[Math.floor(allSizes.length / 2)] : 12;
+
             const lineGaps = [];
             for (let i = 1; i < linesByY.length; i++) {
               lineGaps.push(linesByY[i - 1].y - linesByY[i].y);
@@ -370,55 +432,78 @@
             lineGaps.sort((a, b) => a - b);
             const typicalGap = lineGaps.length ? lineGaps[Math.floor(lineGaps.length / 2)] : 14;
 
-            // Group lines into paragraphs & assign Y position
-            const paragraphItems = [];
-            let currentParaText = '';
+            // Classify headings vs paragraphs and assemble blocks
+            const contentItems = [];
+            let currentParaHtml = '';
+            let currentParaRaw = '';
             let currentParaY = linesByY.length ? linesByY[0].y : 0;
+
+            function flushParagraph() {
+              if (currentParaHtml.trim()) {
+                contentItems.push({
+                  type: 'paragraph',
+                  y: currentParaY,
+                  html: currentParaHtml
+                });
+                currentParaHtml = '';
+                currentParaRaw = '';
+              }
+            }
 
             for (let i = 0; i < linesByY.length; i++) {
               const current = linesByY[i];
-              const prev = linesByY[i - 1];
+              const maxLineSize = Math.max(...current.fontSizes);
+              const isMostlyBold = (current.boldChunks / current.totalChunks) >= 0.7;
+              const isHeadingSize = maxLineSize >= medianFontSize * 1.18;
+              const isShort = current.rawText.trim().length < 80;
 
-              if (!prev) {
-                currentParaText = current.text;
+              // True heading detection
+              const isHeading = (isHeadingSize || (isMostlyBold && isShort)) && !/[.;]$/.test(current.rawText.trim());
+
+              if (isHeading) {
+                flushParagraph();
+                contentItems.push({
+                  type: 'heading',
+                  y: current.y,
+                  html: current.html
+                });
+                continue;
+              }
+
+              // Body text logic
+              if (!currentParaHtml) {
+                currentParaHtml = current.html;
+                currentParaRaw = current.rawText;
                 currentParaY = current.y;
                 continue;
               }
 
-              const gap = prev.y - current.y;
-              // True paragraph gap threshold: gap exceeds typical spacing by 35% or previous line ended with period
+              const prevLine = linesByY[i - 1];
+              const gap = prevLine ? (prevLine.y - current.y) : typicalGap;
               const isParagraphGap = gap > (typicalGap * 1.35);
-              const endsWithPunctuation = /[.!?:"']$/.test(prev.text.trim());
+              const endsWithPunctuation = /[.!?:"']$/.test(currentParaRaw.trim());
 
               if (isParagraphGap && endsWithPunctuation) {
-                paragraphItems.push({
-                  type: 'text',
-                  y: currentParaY,
-                  text: currentParaText
-                });
-                currentParaText = current.text;
+                flushParagraph();
+                currentParaHtml = current.html;
+                currentParaRaw = current.rawText;
                 currentParaY = current.y;
               } else {
-                // Mid-sentence line wrap: append with single space (clearing line break)
-                const hyphenated = prev.text.endsWith('-');
+                // Remove mid-sentence line wraps
+                const hyphenated = currentParaRaw.endsWith('-');
                 if (hyphenated) {
-                  currentParaText = currentParaText.slice(0, -1) + current.text;
+                  currentParaHtml = currentParaHtml.slice(0, -1) + current.html;
+                  currentParaRaw = currentParaRaw.slice(0, -1) + current.rawText;
                 } else {
-                  currentParaText += ' ' + current.text;
+                  currentParaHtml += ' ' + current.html;
+                  currentParaRaw += ' ' + current.rawText;
                 }
               }
             }
+            flushParagraph();
 
-            if (currentParaText.trim()) {
-              paragraphItems.push({
-                type: 'text',
-                y: currentParaY,
-                text: currentParaText
-              });
-            }
-
-            // Combine paragraphs and images, sorting both top-to-bottom
-            const allElements = [...paragraphItems, ...images];
+            // Interleave text and images according to vertical page order
+            const allElements = [...contentItems, ...images];
             allElements.sort((a, b) => b.y - a.y);
 
             // Render page container
@@ -431,10 +516,15 @@
             block.appendChild(header);
 
             allElements.forEach(item => {
-              if (item.type === 'text') {
+              if (item.type === 'heading') {
+                const h = document.createElement('h3');
+                h.className = 'heading';
+                h.innerHTML = item.html;
+                block.appendChild(h);
+              } else if (item.type === 'paragraph') {
                 const p = document.createElement('p');
                 p.className = 'paragraph';
-                p.textContent = item.text;
+                p.innerHTML = item.html;
                 block.appendChild(p);
               } else if (item.type === 'image') {
                 block.appendChild(item.element);
@@ -447,12 +537,11 @@
           readerArea.innerHTML = `<div class="empty-state"><h3>Error loading PDF: ${err.message}</h3></div>`;
         }
       } else {
-        // Plain text / Markdown reflow
+        // Plain text / Markdown fallback
         const reader = new FileReader();
         reader.onload = (evt) => {
           readerArea.innerHTML = '';
           const raw = evt.target.result;
-          // Normalize paragraphs separated by multiple newlines
           const paragraphs = raw.split(/\n\s*\n/);
           paragraphs.forEach(para => {
             const cleanPara = para.replace(/\n+/g, ' ').trim();
