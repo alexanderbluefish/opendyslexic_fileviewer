@@ -125,42 +125,40 @@
     }
 
     .page-block {
-      margin-bottom: 40px;
-      padding-bottom: 30px;
-      border-bottom: 1px dashed rgba(0, 0, 0, 0.15);
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
     }
 
     .page-header {
       font-size: 0.85em;
-      opacity: 0.6;
-      margin-bottom: 16px;
+      opacity: 0.55;
+      margin-bottom: 24px;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.12em;
     }
 
-    .text-content {
+    /* Paragraph styling with true empty line spacing */
+    .paragraph {
       font-size: var(--font-size);
       line-height: var(--line-height);
       letter-spacing: var(--letter-spacing);
       word-spacing: var(--word-spacing);
-      white-space: pre-wrap;
-      word-break: break-word;
-      margin-bottom: 24px;
+      margin-bottom: 1.6em; /* Creates the distinct paragraph gap */
+      text-align: left;
     }
 
-    .images-container {
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-      align-items: center;
-      margin-top: 16px;
+    /* Embedded image container */
+    .image-wrapper {
+      margin: 28px 0;
+      text-align: center;
     }
 
     .extracted-img {
       max-width: 100%;
       height: auto;
       border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
       background: #fff;
     }
 
@@ -208,7 +206,7 @@
   <main id="readerArea">
     <div class="empty-state">
       <h2>OpenDyslexic Reader Ready</h2>
-      <p>Tap "Open File" above to load a document. Text will be cleanly reformatted and photos preserved.</p>
+      <p>Tap "Open File" above to load a document with preserved paragraph flow and inline photos.</p>
     </div>
   </main>
 
@@ -223,7 +221,6 @@
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    // Toolbar Listeners
     fontSizeSlider.addEventListener('input', (e) => {
       const val = `${e.target.value}px`;
       document.documentElement.style.setProperty('--font-size', val);
@@ -248,22 +245,32 @@
       });
     });
 
-    // Helper: extract raw image data from PDF.js objects
-    async function extractImagesFromPage(page) {
+    // Extract images with coordinate tracking (Y position)
+    async function extractImagesWithPositions(page) {
       const ops = await page.getOperatorList();
-      const imageElements = [];
+      const imageItems = [];
       const visited = new Set();
+      let currentMatrix = [1, 0, 0, 1, 0, 0];
 
       for (let i = 0; i < ops.fnArray.length; i++) {
         const fn = ops.fnArray[i];
+        const args = ops.argsArray[i];
+
+        // Track coordinate transformation matrices
+        if (fn === pdfjsLib.OPS.transform) {
+          currentMatrix = args;
+        }
+
         if (fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageXObjectRepeat) {
-          const objId = ops.argsArray[i][0];
+          const objId = args[0];
           if (visited.has(objId)) continue;
           visited.add(objId);
 
+          // PDF Y coordinates originate at the bottom; calculate top Y
+          const imgY = currentMatrix[5];
+
           try {
             const imgData = await new Promise((resolve) => {
-              // Retrieve image binary object from page resources
               if (page.objs.has(objId)) {
                 resolve(page.objs.get(objId));
               } else if (page.commonObjs.has(objId)) {
@@ -273,20 +280,18 @@
               }
             });
 
-            if (imgData && imgData.data && imgData.width > 20 && imgData.height > 20) {
+            if (imgData && imgData.data && imgData.width > 30 && imgData.height > 30) {
               const canvas = document.createElement('canvas');
               canvas.width = imgData.width;
               canvas.height = imgData.height;
               const ctx = canvas.getContext('2d');
-              
-              // Handle RGB / RGBA buffer correctly
+
               let fullImageData;
               if (imgData.data.length === imgData.width * imgData.height * 4) {
                 fullImageData = new ImageData(new Uint8ClampedArray(imgData.data.buffer), imgData.width, imgData.height);
               } else {
                 fullImageData = ctx.createImageData(imgData.width, imgData.height);
-                let srcIdx = 0;
-                let destIdx = 0;
+                let srcIdx = 0, destIdx = 0;
                 for (let p = 0; p < imgData.width * imgData.height; p++) {
                   fullImageData.data[destIdx] = imgData.data[srcIdx];
                   fullImageData.data[destIdx + 1] = imgData.data[srcIdx + 1];
@@ -298,30 +303,37 @@
               }
               ctx.putImageData(fullImageData, 0, 0);
 
+              const wrapper = document.createElement('div');
+              wrapper.className = 'image-wrapper';
               const img = document.createElement('img');
               img.className = 'extracted-img';
               img.src = canvas.toDataURL();
-              imageElements.push(img);
+              wrapper.appendChild(img);
+
+              imageItems.push({
+                type: 'image',
+                y: imgY,
+                element: wrapper
+              });
             }
           } catch (e) {
-            console.warn('Skipped an unsupported image stream:', e);
+            console.warn('Image parse skipped:', e);
           }
         }
       }
-      return imageElements;
+      return imageItems;
     }
 
-    // Process PDF and Text Files
+    // Process PDF and reflow paragraphs
     fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      readerArea.innerHTML = '<div class="empty-state"><h3>Parsing document and extracting photos...</h3></div>';
+      readerArea.innerHTML = '<div class="empty-state"><h3>Analyzing layout and reforming text flow...</h3></div>';
 
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         try {
           const buffer = await file.arrayBuffer();
-          // Disable offscreen canvas to allow reading binary image pixels
           const pdf = await pdfjsLib.getDocument({
             data: buffer,
             isOffscreenCanvasSupported: false
@@ -331,26 +343,85 @@
 
           for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
-
-            // 1. Extract pure text content
             const textData = await page.getTextContent();
-            let pageText = '';
-            let lastY;
+            const images = await extractImagesWithPositions(page);
 
+            // Group text into actual structural lines based on Y positions
+            const linesByY = [];
             textData.items.forEach(item => {
-              if (lastY !== undefined && Math.abs(item.transform[5] - lastY) > 8) {
-                pageText += '\n';
-              } else if (pageText.length > 0 && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
-                pageText += ' ';
+              if (!item.str.trim()) return;
+              const y = Math.round(item.transform[5]);
+              const existingLine = linesByY.find(l => Math.abs(l.y - y) <= 4);
+              if (existingLine) {
+                existingLine.text += (existingLine.text.endsWith(' ') ? '' : ' ') + item.str;
+              } else {
+                linesByY.push({ y: y, text: item.str });
               }
-              pageText += item.str;
-              lastY = item.transform[5];
             });
 
-            // 2. Extract photos on this page
-            const images = await extractImagesFromPage(page);
+            // Sort lines top-to-bottom (PDF Y values go bottom-to-top)
+            linesByY.sort((a, b) => b.y - a.y);
 
-            // 3. Build page block
+            // Calculate median line gap to detect paragraph breaks
+            const lineGaps = [];
+            for (let i = 1; i < linesByY.length; i++) {
+              lineGaps.push(linesByY[i - 1].y - linesByY[i].y);
+            }
+            lineGaps.sort((a, b) => a - b);
+            const typicalGap = lineGaps.length ? lineGaps[Math.floor(lineGaps.length / 2)] : 14;
+
+            // Group lines into paragraphs & assign Y position
+            const paragraphItems = [];
+            let currentParaText = '';
+            let currentParaY = linesByY.length ? linesByY[0].y : 0;
+
+            for (let i = 0; i < linesByY.length; i++) {
+              const current = linesByY[i];
+              const prev = linesByY[i - 1];
+
+              if (!prev) {
+                currentParaText = current.text;
+                currentParaY = current.y;
+                continue;
+              }
+
+              const gap = prev.y - current.y;
+              // True paragraph gap threshold: gap exceeds typical spacing by 35% or previous line ended with period
+              const isParagraphGap = gap > (typicalGap * 1.35);
+              const endsWithPunctuation = /[.!?:"']$/.test(prev.text.trim());
+
+              if (isParagraphGap && endsWithPunctuation) {
+                paragraphItems.push({
+                  type: 'text',
+                  y: currentParaY,
+                  text: currentParaText
+                });
+                currentParaText = current.text;
+                currentParaY = current.y;
+              } else {
+                // Mid-sentence line wrap: append with single space (clearing line break)
+                const hyphenated = prev.text.endsWith('-');
+                if (hyphenated) {
+                  currentParaText = currentParaText.slice(0, -1) + current.text;
+                } else {
+                  currentParaText += ' ' + current.text;
+                }
+              }
+            }
+
+            if (currentParaText.trim()) {
+              paragraphItems.push({
+                type: 'text',
+                y: currentParaY,
+                text: currentParaText
+              });
+            }
+
+            // Combine paragraphs and images, sorting both top-to-bottom
+            const allElements = [...paragraphItems, ...images];
+            allElements.sort((a, b) => b.y - a.y);
+
+            // Render page container
             const block = document.createElement('section');
             block.className = 'page-block';
 
@@ -359,19 +430,16 @@
             header.textContent = `— Page ${pageNum} —`;
             block.appendChild(header);
 
-            if (pageText.trim()) {
-              const textEl = document.createElement('div');
-              textEl.className = 'text-content';
-              textEl.textContent = pageText;
-              block.appendChild(textEl);
-            }
-
-            if (images.length > 0) {
-              const imgContainer = document.createElement('div');
-              imgContainer.className = 'images-container';
-              images.forEach(img => imgContainer.appendChild(img));
-              block.appendChild(imgContainer);
-            }
+            allElements.forEach(item => {
+              if (item.type === 'text') {
+                const p = document.createElement('p');
+                p.className = 'paragraph';
+                p.textContent = item.text;
+                block.appendChild(p);
+              } else if (item.type === 'image') {
+                block.appendChild(item.element);
+              }
+            });
 
             readerArea.appendChild(block);
           }
@@ -379,10 +447,22 @@
           readerArea.innerHTML = `<div class="empty-state"><h3>Error loading PDF: ${err.message}</h3></div>`;
         }
       } else {
-        // Plain text / Markdown
+        // Plain text / Markdown reflow
         const reader = new FileReader();
         reader.onload = (evt) => {
-          readerArea.innerHTML = `<div class="text-content">${evt.target.result}</div>`;
+          readerArea.innerHTML = '';
+          const raw = evt.target.result;
+          // Normalize paragraphs separated by multiple newlines
+          const paragraphs = raw.split(/\n\s*\n/);
+          paragraphs.forEach(para => {
+            const cleanPara = para.replace(/\n+/g, ' ').trim();
+            if (cleanPara) {
+              const p = document.createElement('p');
+              p.className = 'paragraph';
+              p.textContent = cleanPara;
+              readerArea.appendChild(p);
+            }
+          });
         };
         reader.readAsText(file);
       }
